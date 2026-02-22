@@ -51,7 +51,7 @@ export default function ImportPage() {
       <div className="max-w-xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-zinc-100 mb-1">Importa segnalibri</h1>
+          <h1 className="font-display font-bold text-2xl text-zinc-100 mb-1">Importa segnalibri</h1>
           <p className="text-sm text-zinc-500">
             Esporta da Chrome, Firefox, Safari o Edge e carica il file HTML qui sotto.
           </p>
@@ -66,14 +66,14 @@ export default function ImportPage() {
             onClick={() => inputRef.current?.click()}
             className={`group cursor-pointer border-2 border-dashed rounded-2xl p-12 flex flex-col items-center gap-5 transition-all duration-200 ${
               state === 'dragging'
-                ? 'border-violet-500/60 bg-violet-500/5 shadow-glow-violet-sm'
-                : 'border-zinc-700/60 hover:border-violet-500/40 hover:bg-violet-500/[0.03]'
+                ? 'border-violet-500/50 bg-violet-500/5'
+                : 'border-white/[0.08] hover:border-violet-500/30 hover:bg-violet-500/[0.03]'
             }`}
           >
             <div className={`w-16 h-16 rounded-2xl border flex items-center justify-center transition-all ${
               state === 'dragging'
-                ? 'bg-violet-500/20 border-violet-500/40'
-                : 'bg-zinc-800/60 border-zinc-700/40 group-hover:bg-violet-500/10 group-hover:border-violet-500/30'
+                ? 'bg-violet-500/15 border-violet-500/30'
+                : 'bg-zinc-900 border-white/[0.06] group-hover:bg-violet-500/10 group-hover:border-violet-500/20'
             }`}>
               <Upload className={`w-7 h-7 transition-colors ${
                 state === 'dragging' ? 'text-violet-400' : 'text-zinc-500 group-hover:text-violet-400'
@@ -99,8 +99,8 @@ export default function ImportPage() {
 
         {/* Loading */}
         {state === 'loading' && (
-          <div className="border border-zinc-800/60 bg-[#14141f] rounded-2xl p-12 flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+          <div className="bg-zinc-900 border border-white/[0.06] rounded-2xl p-12 flex flex-col items-center gap-4">
+            <div className="w-10 h-10 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
             <p className="text-sm text-zinc-400 font-medium">Importazione in corso…</p>
             <p className="text-xs text-zinc-600">I segnalibri verranno arricchiti in background.</p>
           </div>
@@ -108,50 +108,44 @@ export default function ImportPage() {
 
         {/* Done */}
         {state === 'done' && result && (
-          <div className="border border-zinc-800/60 bg-[#14141f] rounded-2xl overflow-hidden animate-fade-in">
+          <div className="bg-zinc-900 border border-white/[0.06] rounded-2xl overflow-hidden animate-fade-in">
             {/* Success header */}
-            <div className="flex items-center gap-3 px-6 py-5 bg-emerald-500/5 border-b border-emerald-500/20">
-              <CheckCircle2 className="w-6 h-6 text-emerald-400 shrink-0" />
+            <div className="flex items-center gap-3 px-6 py-5 bg-emerald-500/5 border-b border-emerald-500/15">
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
               <div>
-                <p className="font-semibold text-zinc-100">Importazione completata</p>
-                <p className="text-xs text-zinc-500">Il worker sta arricchendo i segnalibri in background</p>
+                <p className="font-semibold text-sm text-zinc-100">Importazione completata</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Il worker sta arricchendo i segnalibri in background</p>
               </div>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-px bg-zinc-800/40 mx-6 mt-6 rounded-xl overflow-hidden">
-              <StatBox icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />} value={result.imported} label="Importati" color="bg-emerald-500/10" />
-              <StatBox icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} value={result.duplicates} label="Duplicati" color="bg-amber-500/10" />
-              <StatBox icon={<XCircle className="w-4 h-4 text-red-400" />} value={result.errors} label="Errori" color="bg-red-500/10" />
+            <div className="grid grid-cols-3 divide-x divide-white/[0.04] mx-6 mt-6 border border-white/[0.06] rounded-xl overflow-hidden">
+              <StatBox icon={<CheckCircle2 className="w-4 h-4 text-emerald-400" />} value={result.imported} label="Importati" />
+              <StatBox icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} value={result.duplicates} label="Duplicati" />
+              <StatBox icon={<XCircle className="w-4 h-4 text-red-400" />} value={result.errors} label="Errori" />
             </div>
 
             {/* Details */}
-            <div className="px-6 py-4 mt-2 space-y-1.5 text-sm">
+            <div className="px-6 py-4 mt-2 space-y-1.5">
               {[
                 ['Segnalibri nel file', result.stats.totalBookmarks],
                 ['Cartelle create', result.stats.totalFolders],
                 ['Duplicati saltati', result.stats.duplicatesSkipped],
                 ['URL non validi', result.stats.malformedSkipped],
               ].map(([label, val]) => (
-                <div key={String(label)} className="flex justify-between text-zinc-500">
-                  <span>{label}</span>
-                  <span className="text-zinc-300 font-medium">{val}</span>
+                <div key={String(label)} className="flex justify-between text-sm">
+                  <span className="text-zinc-500">{label}</span>
+                  <span className="text-zinc-300 font-medium tabular-nums">{val}</span>
                 </div>
               ))}
             </div>
 
             {/* Actions */}
             <div className="px-6 pb-6 flex gap-3">
-              <button
-                onClick={reset}
-                className="flex-1 py-2.5 border border-zinc-700/60 text-zinc-400 text-sm rounded-xl hover:bg-white/[0.04] transition-colors"
-              >
+              <button onClick={reset} className="btn-secondary flex-1">
                 Importa altro
               </button>
-              <Link
-                href="/bookmarks"
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-all hover:shadow-glow-violet-sm"
-              >
+              <Link href="/bookmarks" className="btn-primary flex-1">
                 Vai ai segnalibri <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -162,16 +156,13 @@ export default function ImportPage() {
         {state === 'error' && (
           <div className="border border-red-500/20 bg-red-500/5 rounded-2xl p-6 animate-fade-in">
             <div className="flex items-start gap-3 mb-5">
-              <XCircle className="w-6 h-6 text-red-400 shrink-0 mt-0.5" />
+              <XCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold text-zinc-100">Importazione fallita</p>
+                <p className="font-semibold text-sm text-zinc-100">Importazione fallita</p>
                 <p className="text-sm text-zinc-400 mt-1">{errorMsg}</p>
               </div>
             </div>
-            <button
-              onClick={reset}
-              className="px-5 py-2.5 bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium rounded-xl transition-colors"
-            >
+            <button onClick={reset} className="btn-primary bg-red-600 hover:bg-red-500">
               Riprova
             </button>
           </div>
@@ -179,21 +170,21 @@ export default function ImportPage() {
 
         {/* How-to */}
         {(state === 'idle' || state === 'dragging') && (
-          <div className="mt-6 border border-zinc-800/60 bg-[#14141f] rounded-2xl p-5">
+          <div className="mt-5 bg-zinc-900 border border-white/[0.06] rounded-2xl p-5">
             <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-zinc-500" />
+              <FileText className="w-4 h-4 text-zinc-600" />
               Come esportare i segnalibri
             </h3>
-            <ul className="space-y-2 text-sm text-zinc-500">
+            <ul className="space-y-2">
               {[
                 ['Chrome', 'Menu → Segnalibri → Gestione → ⋮ → Esporta'],
                 ['Firefox', 'Menu → Segnalibri → Gestione → Importa e backup → Esporta'],
                 ['Safari', 'File → Esporta segnalibri…'],
                 ['Edge', 'Menu → Preferiti → Gestisci → ⋯ → Esporta'],
               ].map(([browser, steps]) => (
-                <li key={String(browser)} className="flex gap-2">
+                <li key={String(browser)} className="flex gap-2 text-sm">
                   <span className="text-zinc-400 font-medium shrink-0 w-14">{browser}</span>
-                  <span>{steps}</span>
+                  <span className="text-zinc-500">{steps}</span>
                 </li>
               ))}
             </ul>
@@ -204,11 +195,11 @@ export default function ImportPage() {
   );
 }
 
-function StatBox({ icon, value, label, color }: { icon: React.ReactNode; value: number; label: string; color: string }) {
+function StatBox({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
   return (
-    <div className={`${color} p-4 text-center flex flex-col items-center gap-1`}>
+    <div className="p-4 text-center flex flex-col items-center gap-1">
       {icon}
-      <p className="text-2xl font-bold text-zinc-100">{value}</p>
+      <p className="text-2xl font-bold text-zinc-100 tabular-nums">{value}</p>
       <p className="text-xs text-zinc-500">{label}</p>
     </div>
   );

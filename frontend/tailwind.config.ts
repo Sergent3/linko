@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import defaultTheme from 'tailwindcss/defaultTheme';
 
 const config: Config = {
   content: [
@@ -8,48 +9,37 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['var(--font-inter)', ...defaultTheme.fontFamily.sans],
+        display: ['var(--font-jakarta)', ...defaultTheme.fontFamily.sans],
+      },
       colors: {
-        surface: {
-          DEFAULT: '#0f0f17',
-          card: '#14141f',
-          raised: '#1a1a2e',
-          border: '#1e1e32',
+        brand: {
+          DEFAULT: '#8b5cf6',   // violet-500
+          dim: '#7c3aed',       // violet-600
+          faint: 'rgba(139,92,246,0.08)',
+          border: 'rgba(139,92,246,0.25)',
+          glow: 'rgba(139,92,246,0.18)',
         },
-      },
-      animation: {
-        'glow-pulse': 'glow-pulse 4s ease-in-out infinite',
-        'float': 'float 7s ease-in-out infinite',
-        'float-slow': 'float 11s ease-in-out infinite 3s',
-        'shimmer': 'shimmer 2s linear infinite',
-        'fade-in': 'fade-in 0.3s ease-out',
-      },
-      keyframes: {
-        'glow-pulse': {
-          '0%, 100%': { opacity: '0.35', transform: 'scale(1)' },
-          '50%': { opacity: '0.6', transform: 'scale(1.08)' },
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-24px)' },
-        },
-        shimmer: {
-          '0%': { backgroundPosition: '-200% 0' },
-          '100%': { backgroundPosition: '200% 0' },
-        },
-        'fade-in': {
-          '0%': { opacity: '0', transform: 'translateY(4px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-      },
-      backgroundImage: {
-        'violet-radial': 'radial-gradient(ellipse at center, rgba(124,58,237,0.15) 0%, transparent 70%)',
-        'card-glow': 'linear-gradient(135deg, rgba(124,58,237,0.05) 0%, transparent 60%)',
       },
       boxShadow: {
-        'glow-violet': '0 0 40px -10px rgba(124,58,237,0.4)',
-        'glow-violet-sm': '0 0 20px -5px rgba(124,58,237,0.3)',
-        'card': '0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03)',
-        'card-hover': '0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(124,58,237,0.3)',
+        'glow': '0 0 40px -8px rgba(139,92,246,0.25)',
+        'card-hover': '0 8px 32px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.2)',
+      },
+      animation: {
+        'fade-up': 'fade-up 0.4s ease-out',
+        'fade-in': 'fade-in 0.25s ease-out',
+        'spin-slow': 'spin 3s linear infinite',
+      },
+      keyframes: {
+        'fade-up': {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
       },
     },
   },

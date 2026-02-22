@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Plus, ChevronLeft, ChevronRight, SlidersHorizontal, Menu } from 'lucide-react';
+import { Search, Plus, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
 import Sidebar from '@/components/layout/Sidebar';
 import BookmarkCard from '@/components/bookmarks/BookmarkCard';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
@@ -72,17 +72,17 @@ export default function BookmarksPage() {
         activeTagId={activeTagId}
         onFolderSelect={(id) => { handleFolderSelect(id); setSidebarOpen(false); }}
         onTagSelect={(id) => { handleTagSelect(id); setSidebarOpen(false); }}
-        open={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        mobileOpen={sidebarOpen}
+        onMobileClose={() => setSidebarOpen(false)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05] bg-[#0c0c15]/60 backdrop-blur shrink-0">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05] bg-zinc-950/80 backdrop-blur-sm shrink-0">
           {/* Mobile sidebar toggle */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06] rounded-lg transition-colors shrink-0"
+            className="md:hidden p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors shrink-0"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -94,20 +94,19 @@ export default function BookmarksPage() {
               type="search"
               placeholder="Cerca segnalibri…"
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="input-dark pl-9 py-2"
+              className="input pl-9 py-2"
             />
           </div>
 
           {/* Count */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-zinc-600 ml-auto">
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span>{meta.total} {meta.total === 1 ? 'segnalibro' : 'segnalibri'}</span>
-          </div>
+          <span className="hidden sm:block ml-auto text-xs text-zinc-600">
+            {meta.total} {meta.total === 1 ? 'segnalibro' : 'segnalibri'}
+          </span>
 
           {/* Add button */}
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium rounded-xl transition-all hover:shadow-glow-violet-sm active:scale-95 shrink-0"
+            className="btn-primary shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span className="hidden sm:block">Aggiungi</span>
@@ -118,18 +117,18 @@ export default function BookmarksPage() {
         <div className="flex-1 overflow-y-auto p-4 sm:p-5">
           {loading ? (
             <div className="flex items-center justify-center h-48">
-              <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+              <div className="w-7 h-7 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3">
-              <div className="w-16 h-16 bg-zinc-800/60 border border-zinc-700/40 rounded-2xl flex items-center justify-center">
-                <Search className="w-7 h-7 text-zinc-600" />
+              <div className="w-14 h-14 bg-zinc-900 border border-white/[0.06] rounded-2xl flex items-center justify-center">
+                <Search className="w-6 h-6 text-zinc-600" />
               </div>
               <p className="text-sm text-zinc-500">Nessun segnalibro trovato</p>
               {!search && !activeFolderId && !activeTagId && (
                 <button
                   onClick={() => setShowAdd(true)}
-                  className="text-sm text-violet-400 hover:text-violet-300 font-medium transition-colors"
+                  className="text-sm text-violet-400 hover:text-violet-300 transition-colors"
                 >
                   + Aggiungi il primo segnalibro
                 </button>
@@ -149,17 +148,17 @@ export default function BookmarksPage() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="p-2 rounded-xl border border-zinc-800 text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-xl border border-white/[0.06] text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="text-sm text-zinc-500">
+              <span className="text-sm text-zinc-500 tabular-nums">
                 {page} / {meta.totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
                 disabled={page === meta.totalPages}
-                className="p-2 rounded-xl border border-zinc-800 text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="p-2 rounded-xl border border-white/[0.06] text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

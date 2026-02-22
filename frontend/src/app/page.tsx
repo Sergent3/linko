@@ -1,37 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Bookmark, Upload, Sparkles, FolderOpen, ArrowRight, Search } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Upload, Sparkles, Search, FolderOpen, Shield, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-
-const features = [
-  {
-    icon: Upload,
-    title: 'Import da qualsiasi browser',
-    desc: 'Esporta da Chrome, Firefox, Safari o Edge. Un file HTML e tutti i tuoi link sono dentro.',
-    color: 'from-violet-500/20 to-violet-600/5',
-    iconColor: 'text-violet-400',
-    iconBg: 'bg-violet-500/10 border-violet-500/20',
-  },
-  {
-    icon: Sparkles,
-    title: 'AI tagging automatico',
-    desc: 'Tag istantanei basati sul dominio. Integrazione Claude API pronta per categorizzazione avanzata.',
-    color: 'from-indigo-500/20 to-indigo-600/5',
-    iconColor: 'text-indigo-400',
-    iconBg: 'bg-indigo-500/10 border-indigo-500/20',
-  },
-  {
-    icon: FolderOpen,
-    title: 'Cartelle e ricerca',
-    desc: 'Organizza in cartelle annidate. Cerca per titolo, URL o descrizione in tempo reale.',
-    color: 'from-fuchsia-500/20 to-fuchsia-600/5',
-    iconColor: 'text-fuchsia-400',
-    iconBg: 'bg-fuchsia-500/10 border-fuchsia-500/20',
-  },
-];
 
 export default function HomePage() {
   const router = useRouter();
@@ -42,123 +15,157 @@ export default function HomePage() {
   }, [user, loading, router]);
 
   return (
-    <div className="min-h-screen bg-[#0a0a10] text-zinc-100 overflow-hidden">
-      {/* Background orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-48 -left-24 w-[500px] h-[500px] bg-violet-700/20 rounded-full blur-[100px] animate-glow-pulse" />
-        <div className="absolute top-1/3 -right-32 w-[400px] h-[400px] bg-indigo-700/15 rounded-full blur-[100px] animate-float" />
-        <div className="absolute bottom-0 left-1/4 w-[350px] h-[350px] bg-violet-900/10 rounded-full blur-[80px] animate-float-slow" />
-      </div>
+    <div className="min-h-screen page-bg text-zinc-100">
 
-      {/* Dot grid */}
-      <div className="fixed inset-0 dot-grid opacity-100 pointer-events-none" />
-
-      {/* Navbar */}
-      <header className="relative z-10 flex items-center justify-between px-6 sm:px-10 py-5 border-b border-white/[0.04]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-violet-700 rounded-lg flex items-center justify-center shadow-glow-violet-sm">
-            <Bookmark className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight">Linko</span>
-        </div>
+      {/* ── Nav ── */}
+      <header className="max-w-6xl mx-auto flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
-          <Link
-            href="/login"
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
-          >
+          <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
+            <Zap className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-display font-bold text-base text-zinc-100">Linko</span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Link href="/login" className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
             Accedi
           </Link>
-          <Link
-            href="/register"
-            className="px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-medium transition-all hover:shadow-glow-violet-sm"
-          >
-            Inizia gratis
+          <Link href="/register" className="btn-primary text-sm">
+            Inizia gratis <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative z-10 flex flex-col items-center text-center px-4 pt-20 pb-24 sm:pt-28 sm:pb-32">
-        {/* Badge */}
-        <div className="inline-flex items-center gap-2 bg-violet-950/60 border border-violet-500/25 rounded-full px-4 py-1.5 text-sm text-violet-300 mb-8">
-          <Sparkles className="w-3.5 h-3.5" />
-          AI-powered · Open source ready
-        </div>
-
-        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight mb-6 max-w-4xl leading-[1.1]">
-          I tuoi segnalibri,{' '}
-          <span className="gradient-text">organizzati dall&apos;AI</span>
-        </h1>
-
-        <p className="text-lg sm:text-xl text-zinc-400 max-w-xl mb-10 leading-relaxed">
-          Salva link da qualsiasi browser. L&apos;AI li categorizza automaticamente.
-          Ritrova tutto in secondi.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center gap-3">
-          <Link
-            href="/register"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl font-semibold text-base transition-all hover:shadow-glow-violet active:scale-95"
-          >
-            Inizia gratis <ArrowRight className="w-4 h-4" />
-          </Link>
-          <Link
-            href="/login"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/60 text-zinc-300 rounded-xl font-semibold text-base transition-all"
-          >
-            Accedi
-          </Link>
-        </div>
-
-        {/* Fake search bar decoration */}
-        <div className="mt-16 w-full max-w-2xl bg-zinc-900/60 border border-zinc-800/80 rounded-2xl p-4 backdrop-blur hidden sm:block">
-          <div className="flex items-center gap-3 text-zinc-600 text-sm mb-3 border-b border-zinc-800/60 pb-3">
-            <Search className="w-4 h-4 text-violet-500" />
-            <span className="text-zinc-500">Cerca segnalibri...</span>
+      {/* ── Hero ── */}
+      <section className="max-w-6xl mx-auto px-6 pt-16 pb-12">
+        <div className="max-w-3xl">
+          <div className="inline-flex items-center gap-2 bg-zinc-800/60 border border-white/[0.08] rounded-full px-3 py-1 text-xs text-zinc-400 mb-6">
+            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+            AI tagging · Import da Chrome · Ricerca istantanea
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              { title: 'Next.js Documentation', tags: ['#docs', '#react'], domain: 'nextjs.org' },
-              { title: 'Vercel Dashboard', tags: ['#devops', '#hosting'], domain: 'vercel.com' },
-              { title: 'GitHub - vercel/next.js', tags: ['#dev', '#code'], domain: 'github.com' },
-            ].map((item) => (
-              <div key={item.domain} className="bg-zinc-800/50 border border-zinc-700/40 rounded-xl p-3 text-left">
-                <p className="text-xs font-medium text-zinc-300 line-clamp-1 mb-1">{item.title}</p>
-                <p className="text-[10px] text-zinc-600 mb-2">{item.domain}</p>
-                <div className="flex gap-1 flex-wrap">
-                  {item.tags.map((t) => (
-                    <span key={t} className="text-[10px] bg-violet-950/60 text-violet-400 border border-violet-800/40 rounded px-1.5 py-0.5">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
+
+          <h1 className="font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight mb-6">
+            I tuoi link.<br />
+            <span className="text-violet-400">Organizzati.</span><br />
+            Trovati subito.
+          </h1>
+
+          <p className="text-lg text-zinc-400 max-w-xl mb-8 leading-relaxed">
+            Salva segnalibri da qualsiasi browser, taggati automaticamente dall&apos;AI.
+            Ritrova tutto in secondi con la ricerca full-text.
+          </p>
+
+          <div className="flex items-center gap-3">
+            <Link href="/register" className="btn-primary">
+              Crea account gratuito <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link href="/login" className="btn-secondary">
+              Accedi
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="relative z-10 px-4 sm:px-6 max-w-5xl mx-auto pb-32">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {features.map(({ icon: Icon, title, desc, color, iconColor, iconBg }) => (
-            <div
-              key={title}
-              className={`group relative bg-gradient-to-br ${color} border border-white/[0.06] hover:border-violet-500/30 rounded-2xl p-6 transition-all duration-300 hover:shadow-card-hover`}
-            >
-              <div className={`w-10 h-10 ${iconBg} border rounded-xl flex items-center justify-center mb-4`}>
-                <Icon className={`w-5 h-5 ${iconColor}`} />
+      {/* ── Bento grid ── */}
+      <section className="max-w-6xl mx-auto px-6 pb-24">
+        <div className="grid grid-cols-12 gap-3 auto-rows-[minmax(140px,auto)]">
+
+          {/* Import — large */}
+          <div className="col-span-12 md:col-span-7 bento group hover:border-white/[0.12] transition-colors">
+            <div className="flex items-start justify-between mb-4">
+              <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center">
+                <Upload className="w-5 h-5 text-violet-400" />
               </div>
-              <h3 className="font-semibold text-zinc-100 mb-2">{title}</h3>
-              <p className="text-sm text-zinc-400 leading-relaxed">{desc}</p>
+              <span className="text-[10px] text-zinc-600 border border-zinc-800 rounded px-1.5 py-0.5 font-medium uppercase tracking-wide">Import</span>
             </div>
-          ))}
+            <h3 className="font-display font-bold text-xl text-zinc-100 mb-2">
+              Da qualsiasi browser
+            </h3>
+            <p className="text-sm text-zinc-500 leading-relaxed max-w-sm">
+              Esporta il file HTML da Chrome, Firefox, Safari o Edge. Linko ricrea cartelle, importa tutto e accoda l&apos;arricchimento automaticamente.
+            </p>
+            {/* Fake import file UI */}
+            <div className="absolute bottom-5 right-5 w-36 h-20 bg-zinc-800/80 border border-white/[0.07] rounded-xl flex flex-col items-center justify-center gap-1 opacity-40 group-hover:opacity-70 transition-opacity">
+              <div className="w-8 h-10 border-2 border-zinc-600 rounded-md flex items-end justify-center pb-1">
+                <div className="w-5 h-0.5 bg-zinc-600 rounded" />
+              </div>
+              <span className="text-[9px] text-zinc-500">bookmarks.html</span>
+            </div>
+          </div>
+
+          {/* AI Tags */}
+          <div className="col-span-12 md:col-span-5 bento hover:border-white/[0.12] transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center mb-4">
+              <Sparkles className="w-5 h-5 text-violet-400" />
+            </div>
+            <h3 className="font-display font-bold text-xl text-zinc-100 mb-2">
+              Tag automatici
+            </h3>
+            <p className="text-sm text-zinc-500 leading-relaxed">
+              Regex istantanee per dominio (GitHub → #dev, YouTube → #video). Placeholder Claude API pronto per tagging avanzato.
+            </p>
+            <div className="flex flex-wrap gap-1.5 mt-4">
+              {['#dev', '#react', '#docs', '#design', '#video', '#ai'].map((t, i) => (
+                <span key={t}
+                  className="text-xs px-2 py-0.5 rounded-md border"
+                  style={{
+                    background: i % 3 === 0 ? 'rgba(139,92,246,0.1)' : i % 3 === 1 ? 'rgba(99,102,241,0.1)' : 'rgba(39,39,42,0.8)',
+                    borderColor: i % 3 === 0 ? 'rgba(139,92,246,0.3)' : i % 3 === 1 ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)',
+                    color: i % 3 === 0 ? '#a78bfa' : i % 3 === 1 ? '#818cf8' : '#71717a',
+                  }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="col-span-12 sm:col-span-6 md:col-span-4 bento hover:border-white/[0.12] transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center mb-4">
+              <Search className="w-5 h-5 text-violet-400" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Ricerca full-text</h3>
+            <p className="text-sm text-zinc-500">Titolo, URL, descrizione. Debounce 400ms.</p>
+            <div className="mt-4 flex items-center gap-2 bg-zinc-800/60 border border-white/[0.06] rounded-lg px-3 py-2">
+              <Search className="w-3.5 h-3.5 text-zinc-600" />
+              <span className="text-xs text-zinc-600">next.js hooks...</span>
+              <span className="ml-auto text-[10px] text-zinc-700">3 risultati</span>
+            </div>
+          </div>
+
+          {/* Organize */}
+          <div className="col-span-12 sm:col-span-6 md:col-span-4 bento hover:border-white/[0.12] transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center mb-4">
+              <FolderOpen className="w-5 h-5 text-violet-400" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Cartelle annidate</h3>
+            <p className="text-sm text-zinc-500">Struttura gerarchica illimitata, conteggio per cartella.</p>
+            <div className="mt-4 space-y-1">
+              {[['Dev', 12], ['  ↳ React', 5], ['  ↳ Next.js', 3], ['Design', 8]].map(([name, count]) => (
+                <div key={String(name)} className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-500 font-mono">{name}</span>
+                  <span className="text-zinc-700">{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Privacy */}
+          <div className="col-span-12 sm:col-span-12 md:col-span-4 bento hover:border-white/[0.12] transition-colors">
+            <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center mb-4">
+              <Shield className="w-5 h-5 text-violet-400" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Self-hosted</h3>
+            <p className="text-sm text-zinc-500">I tuoi dati rimangono sui tuoi server. JWT auth, soft-delete, nessun tracking.</p>
+          </div>
+
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="relative z-10 border-t border-white/[0.04] px-6 py-6 text-center text-xs text-zinc-600">
-        Linko · Smart Bookmark Manager
+      {/* ── Footer ── */}
+      <footer className="border-t border-white/[0.04] px-6 py-5 text-center">
+        <p className="text-xs text-zinc-700">Linko · Stack: Next.js · Express · PostgreSQL · BullMQ</p>
       </footer>
     </div>
   );

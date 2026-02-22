@@ -17,9 +17,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, loading, router]);
 
   const spinner = (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f0f17]">
+    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+        <div className="w-7 h-7 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
         <p className="text-xs text-zinc-600">Caricamento…</p>
       </div>
     </div>
@@ -29,7 +29,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user && !tokens.access) return spinner;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0f17]">
+    <div className="min-h-screen flex flex-col bg-zinc-950">
       <Navbar />
       <main className="flex-1 flex overflow-hidden">{children}</main>
     </div>
