@@ -1,36 +1,30 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Search, Plus, ChevronLeft, ChevronRight, Menu } from 'lucide-react';
-import Sidebar from '@/components/layout/Sidebar';
-import BookmarkCard from '@/components/bookmarks/BookmarkCard';
+import { Search, Plus } from 'lucide-react';
+import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
 import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
-import type { Bookmark, BookmarkFilters, Folder } from '@/types/api';
-
-const LIMIT = 24;
+import type { Bookmark, Folder } from '@/types/api';
 
 export default function BookmarksPage() {
-  const [items, setItems] = useState<Bookmark[]>([]);
-  const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
+  const [allBookmarks, setAllBookmarks] = useState<Bookmark[]>([]);
   const [folderList, setFolderList] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   const [search, setSearch] = useState('');
-  const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
-  const [activeTagId, setActiveTagId] = useState<string | undefined>();
-  const [page, setPage] = useState(1);
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async (filters: BookmarkFilters) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await bookmarksApi.list(filters);
-      setItems(res.data);
-      setMeta({ page: res.meta.page, totalPages: res.meta.totalPages, total: res.meta.total });
+      const [bRes, fList] = await Promise.all([
+        bookmarksApi.list({ page: 1, limit: 500 }),
+        foldersApi.list(),
+      ]);
+      setAllBookmarks(bRes.data);
+      setFolderList(fList);
     } catch {
       /* silent fail */
     } finally {
@@ -38,133 +32,135 @@ export default function BookmarksPage() {
     }
   }, []);
 
-  useEffect(() => {
-    foldersApi.list().then(setFolderList).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    load({ page, limit: LIMIT, folderId: activeFolderId, tagId: activeTagId, search: search || undefined });
-  }, [load, page, activeFolderId, activeTagId, search]);
+  useEffect(() => { load(); }, [load]);
 
   function handleSearchChange(value: string) {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => { setSearch(value); setPage(1); }, 400);
+    searchTimeout.current = setTimeout(() => setSearch(value), 300);
   }
-
-  function handleFolderSelect(id: string | undefined) { setActiveFolderId(id); setPage(1); }
-  function handleTagSelect(id: string | undefined) { setActiveTagId(id); setPage(1); }
 
   async function handleDelete(id: string) {
     await bookmarksApi.delete(id);
-    setItems((prev) => prev.filter((b) => b.id !== id));
-    setMeta((m) => ({ ...m, total: m.total - 1 }));
+    setAllBookmarks(prev => prev.filter(b => b.id !== id));
   }
 
   function handleCreated(b: Bookmark) {
-    setItems((prev) => [b, ...prev]);
-    setMeta((m) => ({ ...m, total: m.total + 1 }));
+    setAllBookmarks(prev => [b, ...prev]);
   }
 
+  // Filter by search
+  const filtered = search
+    ? allBookmarks.filter(b =>
+        b.title.toLowerCase().includes(search.toLowerCase()) ||
+        b.url.toLowerCase().includes(search.toLowerCase())
+      )
+    : allBookmarks;
+
+  // Build folder name map (flat, includes nested)
+  const folderNameMap = new Map<string, string>();
+  function flattenFolders(list: Folder[], prefix = '') {
+    list.forEach(f => {
+      folderNameMap.set(f.id, prefix ? `${prefix} / ${f.name}` : f.name);
+      if (f.children?.length) flattenFolders(f.children, f.name);
+    });
+  }
+  flattenFolders(folderList);
+
+  // Group bookmarks by folderId
+  const grouped = new Map<string | null, Bookmark[]>();
+  filtered.forEach(b => {
+    const key = b.folderId ?? null;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(b);
+  });
+
+  // Sort: folders first (in folderList order), uncategorized last
+  const folderOrder = folderList.map(f => f.id);
+  const groups: Array<{ key: string | null; name: string; bookmarks: Bookmark[] }> = [];
+
+  // Add in folder order
+  folderOrder.forEach(id => {
+    if (grouped.has(id)) {
+      groups.push({ key: id, name: folderNameMap.get(id) ?? id, bookmarks: grouped.get(id)! });
+    }
+  });
+
+  // Add uncategorized
+  if (grouped.has(null) && (grouped.get(null)?.length ?? 0) > 0) {
+    groups.push({ key: null, name: 'Senza cartella', bookmarks: grouped.get(null)! });
+  }
+
+  // Any folders referenced in bookmarks but not in folderList (edge case)
+  grouped.forEach((bmarks, key) => {
+    if (key !== null && !folderOrder.includes(key)) {
+      groups.push({ key, name: folderNameMap.get(key) ?? key, bookmarks: bmarks });
+    }
+  });
+
+  const totalVisible = filtered.length;
+
   return (
-    <>
-      <Sidebar
-        activeFolderId={activeFolderId}
-        activeTagId={activeTagId}
-        onFolderSelect={(id) => { handleFolderSelect(id); setSidebarOpen(false); }}
-        onTagSelect={(id) => { handleTagSelect(id); setSidebarOpen(false); }}
-        mobileOpen={sidebarOpen}
-        onMobileClose={() => setSidebarOpen(false)}
-      />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05] bg-zinc-950/80 backdrop-blur-sm shrink-0">
+        {/* Search */}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
+          <input
+            type="search"
+            placeholder="Cerca in tutti i segnalibri…"
+            onChange={e => handleSearchChange(e.target.value)}
+            className="input pl-9 py-2"
+          />
+        </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.05] bg-zinc-950/80 backdrop-blur-sm shrink-0">
-          {/* Mobile sidebar toggle */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors shrink-0"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+        {/* Count */}
+        <span className="hidden sm:block ml-auto text-xs text-zinc-600">
+          {totalVisible} {totalVisible === 1 ? 'segnalibro' : 'segnalibri'}
+        </span>
 
-          {/* Search */}
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-600" />
-            <input
-              type="search"
-              placeholder="Cerca segnalibri…"
-              onChange={(e) => handleSearchChange(e.target.value)}
-              className="input pl-9 py-2"
-            />
+        {/* Add */}
+        <button onClick={() => setShowAdd(true)} className="btn-primary shrink-0">
+          <Plus className="w-4 h-4" />
+          <span className="hidden sm:block">Aggiungi</span>
+        </button>
+      </div>
+
+      {/* Widget grid */}
+      <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+        {loading ? (
+          <div className="flex items-center justify-center h-48">
+            <div className="w-7 h-7 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
           </div>
-
-          {/* Count */}
-          <span className="hidden sm:block ml-auto text-xs text-zinc-600">
-            {meta.total} {meta.total === 1 ? 'segnalibro' : 'segnalibri'}
-          </span>
-
-          {/* Add button */}
-          <button
-            onClick={() => setShowAdd(true)}
-            className="btn-primary shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:block">Aggiungi</span>
-          </button>
-        </div>
-
-        {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          {loading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="w-7 h-7 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+        ) : groups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <div className="w-14 h-14 bg-zinc-900 border border-white/[0.06] rounded-2xl flex items-center justify-center">
+              <Search className="w-6 h-6 text-zinc-600" />
             </div>
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-              <div className="w-14 h-14 bg-zinc-900 border border-white/[0.06] rounded-2xl flex items-center justify-center">
-                <Search className="w-6 h-6 text-zinc-600" />
-              </div>
-              <p className="text-sm text-zinc-500">Nessun segnalibro trovato</p>
-              {!search && !activeFolderId && !activeTagId && (
-                <button
-                  onClick={() => setShowAdd(true)}
-                  className="text-sm text-violet-400 hover:text-violet-300 transition-colors"
-                >
-                  + Aggiungi il primo segnalibro
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {items.map((b) => (
-                <BookmarkCard key={b.id} bookmark={b} onDelete={handleDelete} />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          {meta.totalPages > 1 && (
-            <div className="flex items-center justify-center gap-3 mt-8">
+            <p className="text-sm text-zinc-500">
+              {search ? 'Nessun risultato' : 'Nessun segnalibro — aggiungine uno!'}
+            </p>
+            {!search && (
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-2 rounded-xl border border-white/[0.06] text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                onClick={() => setShowAdd(true)}
+                className="text-sm text-violet-400 hover:text-violet-300 transition-colors"
               >
-                <ChevronLeft className="w-4 h-4" />
+                + Aggiungi il primo segnalibro
               </button>
-              <span className="text-sm text-zinc-500 tabular-nums">
-                {page} / {meta.totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-                disabled={page === meta.totalPages}
-                className="p-2 rounded-xl border border-white/[0.06] text-zinc-500 hover:border-violet-500/40 hover:text-violet-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : (
+          <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-4">
+            {groups.map(g => (
+              <BookmarkWidget
+                key={g.key ?? '__uncategorized__'}
+                title={g.name}
+                bookmarks={g.bookmarks}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {showAdd && (
@@ -174,6 +170,6 @@ export default function BookmarksPage() {
           onCreated={handleCreated}
         />
       )}
-    </>
+    </div>
   );
 }
