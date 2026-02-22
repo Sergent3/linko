@@ -1,7 +1,22 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bookmark, Upload, Tag } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function HomePage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  // Redirect authenticated users to the app
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/bookmarks');
+    }
+  }, [user, loading, router]);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-950 text-white px-4">
       {/* Logo */}
@@ -34,16 +49,16 @@ export default function HomePage() {
       {/* CTA */}
       <div className="flex gap-4">
         <Link
-          href="/bookmarks"
+          href="/login"
           className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-lg font-semibold transition-colors"
         >
-          Apri libreria
+          Accedi
         </Link>
         <Link
-          href="/import"
+          href="/register"
           className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-lg font-semibold transition-colors"
         >
-          Importa file
+          Registrati
         </Link>
       </div>
     </main>

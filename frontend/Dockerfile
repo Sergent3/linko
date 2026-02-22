@@ -2,17 +2,19 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 # ── Development ───────────────────────────────────────────────────────────────
+# node_modules viene preparato durante il build con --ignore-scripts
+# (AppArmor blocca i postinstall scripts); le anonymous volumes in docker-compose
+# preservano questo layer e impediscono che il mount dell'host li sovrascriva.
 FROM base AS development
 COPY package*.json ./
-RUN npm install
-COPY . .
+RUN npm install --ignore-scripts
 EXPOSE 3000
 CMD ["npm", "run", "dev"]
 
 # ── Builder ───────────────────────────────────────────────────────────────────
 FROM base AS builder
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY . .
 RUN npm run build
 

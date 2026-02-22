@@ -122,6 +122,8 @@ services:
       target: development
     restart: unless-stopped
     networks: [linko-net]
+    security_opt:
+      - apparmor:unconfined
     depends_on:
       backend:
         condition: service_healthy
@@ -132,5 +134,5 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - /app/node_modules   # preserva node_modules dal build (non sovrascrivere con host)
+      - /app/.next          # preserva cache Next.js
