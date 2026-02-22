@@ -1,0 +1,136 @@
+version: '3.9'
+
+networks:
+  linko-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks: [linko-net]
+    command: postgres -c unix_socket_directories=''
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-linko}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-linkopass}
+      POSTGRES_DB: ${POSTGRES_DB:-linkodb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER:-linko} -d ${POSTGRES_DB:-linkodb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [linko-net]
+    # AOF persistence + LRU eviction policy per BullMQ
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ── Application Services ────────────────────────────────────────────────────
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    networks: [linko-net]
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-linko}:${POSTGRES_PASSWORD:-linkopass}@postgres:5432/${POSTGRES_DB:-linkodb}
+      REDIS_URL: redis://redis:6379
+      PORT: 3001
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-15m}
+      JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-7}
+      # Forza il binary Prisma per Alpine/musl con OpenSSL 3.x (bypass detection che richiede spawn)
+      PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    volumes:
+      - ./backend:/app   # node_modules incluso: Prisma usa binary musl pre-generati sull'host
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Worker scalabile indipendentemente dall'API.
+  # Per scalare: docker compose up --scale worker=3
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    networks: [linko-net]
+    security_opt:
+      - apparmor:unconfined
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-linko}:${POSTGRES_PASSWORD:-linkopass}@postgres:5432/${POSTGRES_DB:-linkodb}
+      REDIS_URL: redis://redis:6379
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      SCRAPING_DELAY_MS: ${SCRAPING_DELAY_MS:-1200}
+      SCRAPING_TIMEOUT_MS: ${SCRAPING_TIMEOUT_MS:-10000}
+      HTTP_CHECK_TIMEOUT_MS: ${HTTP_CHECK_TIMEOUT_MS:-8000}
+      PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
+    volumes:
+      - ./worker:/app   # node_modules incluso: Prisma usa binary musl pre-generati sull'host
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    networks: [linko-net]
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      INTERNAL_API_URL: http://backend:3001
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next

@@ -1,0 +1,138 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum EnrichStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum TagSource {
+  REGEX   // Assegnato dal tag-engine (gratuito, regex su dominio)
+  AI      // Assegnato dal modello AI (futuro, a pagamento)
+  MANUAL  // Assegnato dall'utente
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MODELLI
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  bookmarks     Bookmark[]
+  folders       Folder[]
+  tags          Tag[]
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique   // SHA-256(rawToken) — il raw non è mai persistito
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?           // null = valido
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent    Folder?    @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children  Folder[]   @relation("FolderHierarchy")
+  bookmarks Bookmark[]
+
+  @@index([userId])
+  @@index([parentId])
+}
+
+model Bookmark {
+  id          String  @id @default(cuid())
+  url         String
+  urlHash     String  // SHA-256(normalized_url) — usato per de-duplicazione
+  title       String
+  description String?
+  favicon     String? // URL favicon (solo http/https, no data URI)
+  imageUrl    String? // OpenGraph image
+  httpStatus  Int?    // 200, 301, 404, 0=irraggiungibile
+  folderId    String?
+  userId      String
+
+  // Metadata dall'import browser
+  importedAt     DateTime?
+  browserAddedAt DateTime? // Timestamp originale dal file HTML (ADD_DATE)
+
+  // Soft delete: il record rimane nel DB ma è nascosto all'utente
+  deletedAt DateTime?
+
+  // Stato pipeline di arricchimento asincrona
+  enrichStatus EnrichStatus @default(PENDING)
+  enrichedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags   BookmarkTag[]
+
+  // Constraint di unicità: un URL normalizzato non può comparire due volte per lo stesso utente
+  @@unique([urlHash, userId])
+  @@index([userId, deletedAt])
+  @@index([enrichStatus])
+  @@index([folderId])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  name      String
+  userId    String
+  source    TagSource @default(MANUAL)
+  createdAt DateTime  @default(now())
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmarks BookmarkTag[]
+
+  @@unique([name, userId])
+  @@index([userId])
+}
+
+// Tabella join esplicita: permette di salvare la source del tag sulla relazione
+model BookmarkTag {
+  bookmarkId String
+  tagId      String
+  assignedAt DateTime  @default(now())
+  source     TagSource @default(MANUAL)
+
+  bookmark Bookmark @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+  tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([bookmarkId, tagId])
+}
