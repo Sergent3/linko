@@ -3,25 +3,30 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { tokens } from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading } = useAuth();
 
+  // Reindirizza al login solo quando siamo certi che non esiste nessun token
+  // (evita redirect prematuro durante la finestra tra router.push e commit di setUser)
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && !tokens.access) {
       router.replace('/login');
     }
   }, [user, loading, router]);
 
-  if (loading || !user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const spinner = (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-8 h-8 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  // Mostra spinner durante: (1) caricamento iniziale, (2) redirect pendente
+  if (loading) return spinner;
+  if (!user && !tokens.access) return spinner;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">

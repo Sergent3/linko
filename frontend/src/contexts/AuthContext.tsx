@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import { auth, tokens } from '@/lib/api';
@@ -24,14 +25,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Restore session from localStorage on mount
+  // Ref per accesso sincrono: evita il race condition tra setUser (async) e
+  // router.push — il layout legge userRef.current prima che lo state committi.
+  const userRef = useRef<User | null>(null);
+
   useEffect(() => {
     const stored = localStorage.getItem('linko_user');
     if (stored && tokens.access) {
       try {
-        setUser(JSON.parse(stored));
+        const u = JSON.parse(stored) as User;
+        userRef.current = u;
+        setUser(u);
       } catch {
-        /* ignore malformed data */
+        /* dati corrotti — ignora */
       }
     }
     setLoading(false);
@@ -41,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await auth.login(email, password);
     tokens.set(data.accessToken, data.refreshToken);
     localStorage.setItem('linko_user', JSON.stringify(data.user));
+    userRef.current = data.user;  // sincrono: disponibile subito per il layout
     setUser(data.user);
   }, []);
 
@@ -48,17 +55,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const data = await auth.register(email, password);
     tokens.set(data.accessToken, data.refreshToken);
     localStorage.setItem('linko_user', JSON.stringify(data.user));
+    userRef.current = data.user;
     setUser(data.user);
   }, []);
 
   const logout = useCallback(async () => {
     await auth.logout();
     localStorage.removeItem('linko_user');
+    userRef.current = null;
     setUser(null);
   }, []);
 
+  // effectiveUser: usa lo state se disponibile, altrimenti cade sul ref.
+  // Questo copre la finestra tra la chiamata a setUser e il commit del re-render.
+  const effectiveUser = user ?? userRef.current;
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user: effectiveUser, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
