@@ -14,7 +14,7 @@ function Favicon({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
 
   const src = (() => {
-    try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=32`; }
+    try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`; }
     catch { return ''; }
   })();
 

@@ -8,9 +8,11 @@
    html[data-theme="light"]     → light overrides
    ═══════════════════════════════════════════════════════════════════════════ */
 
-:root {
+/* dark is the default; also matched by [data-theme="dark"] for explicitness */
+:root,
+html[data-theme="dark"] {
   /* Overlay on photo */
-  --overlay:            rgba(0, 0, 0, 0.62);
+  --overlay:            rgba(0, 0, 0, 0.60);
 
   /* Widget — solid dark card */
   --widget-bg:          #1e1e1e;
@@ -18,11 +20,11 @@
   --widget-header-text: #6b7280;          /* gray-500  */
   --widget-border:      rgba(255,255,255,0.08);
   --widget-divider:     rgba(255,255,255,0.06);
-  --widget-shadow:      0 8px 30px rgba(0,0,0,0.55);
+  --widget-shadow:      0 15px 40px rgba(0,0,0,0.40);
 
   /* List items */
   --item-text:          #d1d5db;          /* gray-300  */
-  --item-text-hover:    #a78bfa;          /* violet-400 */
+  --item-text-hover:    #8b5cf6;          /* violet-500 */
   --item-hover-bg:      rgba(255,255,255,0.05);
 
   /* Bars */
@@ -47,7 +49,7 @@ html[data-theme="light"] {
   --widget-header-text: #6b7280;
   --widget-border:      rgba(0,0,0,0.08);
   --widget-divider:     rgba(0,0,0,0.06);
-  --widget-shadow:      0 8px 30px rgba(0,0,0,0.12);
+  --widget-shadow:      0 15px 40px rgba(0,0,0,0.20);
 
   --item-text:          #1f2937;          /* gray-800  */
   --item-text-hover:    #7c3aed;          /* violet-600 */
