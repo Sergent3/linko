@@ -17,7 +17,7 @@ export const updateBookmarkSchema = z.object({
 
 export const listBookmarksSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
+  limit: z.coerce.number().int().min(1).max(1000).default(20),
   folderId: z.string().cuid().optional(),
   tagId: z.string().cuid().optional(),
   search: z.string().max(200).optional(),

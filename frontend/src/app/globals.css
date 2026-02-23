@@ -2,81 +2,167 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --bg: #09090b;         /* zinc-950 */
-    --surface: #18181b;    /* zinc-900 */
-    --border: rgba(255,255,255,0.06);
-  }
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME VARIABLES
+   :root / [data-theme="dark"]  → dark defaults
+   html[data-theme="light"]     → light overrides
+   ═══════════════════════════════════════════════════════════════════════════ */
 
+:root {
+  /* Overlay on photo */
+  --overlay:            rgba(0, 0, 0, 0.62);
+
+  /* Widget — solid dark card */
+  --widget-bg:          #1e1e1e;
+  --widget-header-bg:   #141414;
+  --widget-header-text: #6b7280;          /* gray-500  */
+  --widget-border:      rgba(255,255,255,0.08);
+  --widget-divider:     rgba(255,255,255,0.06);
+  --widget-shadow:      0 8px 30px rgba(0,0,0,0.55);
+
+  /* List items */
+  --item-text:          #d1d5db;          /* gray-300  */
+  --item-text-hover:    #a78bfa;          /* violet-400 */
+  --item-hover-bg:      rgba(255,255,255,0.05);
+
+  /* Bars */
+  --bar-bg:             rgba(0,0,0,0.35);
+  --bar-border:         rgba(255,255,255,0.07);
+  --search-bg:          rgba(0,0,0,0.45);
+  --search-border:      rgba(255,255,255,0.12);
+  --search-text:        #f9fafb;
+  --search-placeholder: rgba(156,163,175,0.55);
+
+  /* Text */
+  --text-muted:         rgba(156,163,175,0.60);
+  --text-strong:        #f9fafb;
+}
+
+/* Light mode — applied by setting data-theme="light" on <html> */
+html[data-theme="light"] {
+  --overlay:            rgba(255,255,255,0.40);
+
+  --widget-bg:          #ffffff;
+  --widget-header-bg:   #f3f4f6;          /* gray-100  */
+  --widget-header-text: #6b7280;
+  --widget-border:      rgba(0,0,0,0.08);
+  --widget-divider:     rgba(0,0,0,0.06);
+  --widget-shadow:      0 8px 30px rgba(0,0,0,0.12);
+
+  --item-text:          #1f2937;          /* gray-800  */
+  --item-text-hover:    #7c3aed;          /* violet-600 */
+  --item-hover-bg:      rgba(0,0,0,0.04);
+
+  --bar-bg:             rgba(255,255,255,0.30);
+  --bar-border:         rgba(0,0,0,0.10);
+  --search-bg:          rgba(255,255,255,0.72);
+  --search-border:      rgba(0,0,0,0.12);
+  --search-text:        #111827;
+  --search-placeholder: rgba(75,85,99,0.60);
+
+  --text-muted:         rgba(75,85,99,0.72);
+  --text-strong:        #111827;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BODY BACKGROUND — switches image per theme
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer base {
   * {
     scrollbar-width: thin;
-    scrollbar-color: #27272a transparent;
+    scrollbar-color: rgba(127,127,127,0.22) transparent;
   }
   *::-webkit-scrollbar { width: 4px; }
-  *::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+  *::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.22); border-radius: 4px; }
 
+  /* Dark mode background (default) */
   body {
-    background: var(--bg);
-    color: #f4f4f5; /* zinc-100 */
+    background-image: url('https://static.start.me/backgrounds/zjb2tgznajngxqrvkxj9');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    color: var(--item-text);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Static ambient gradient — no animation, just beautiful */
-  .page-bg {
-    background:
-      radial-gradient(ellipse 90% 50% at 50% -10%, rgba(109,40,217,0.14), transparent 60%),
-      var(--bg);
+  /* Light mode — different sunny photo */
+  html[data-theme="light"] body {
+    background-image: url('https://static.start.me/backgrounds/v2/bg-01.jpg');
   }
 
+  /* Auth pages keep a static gradient */
   .page-bg-auth {
     background:
-      radial-gradient(ellipse 80% 60% at 100% 0%, rgba(109,40,217,0.1), transparent 55%),
-      radial-gradient(ellipse 60% 50% at 0% 100%, rgba(29,78,216,0.08), transparent 55%),
-      var(--bg);
+      radial-gradient(ellipse 80% 60% at 100% 0%, rgba(109,40,217,0.15), transparent 55%),
+      radial-gradient(ellipse 60% 50% at 0% 100%, rgba(29,78,216,0.10), transparent 55%),
+      #09090b;
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   COMPONENT CLASSES
+   ═══════════════════════════════════════════════════════════════════════════ */
 @layer components {
-  /* Animated gradient border for hero elements */
-  .gradient-border {
-    position: relative;
-    border-radius: 1rem;
-  }
-  .gradient-border::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    background: linear-gradient(135deg, rgba(139,92,246,0.5), rgba(236,72,153,0.3), rgba(6,182,212,0.3));
-    z-index: -1;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-  .gradient-border:hover::before { opacity: 1; }
 
-  /* Bento card base */
-  .bento {
-    @apply bg-zinc-900 border border-white/[0.06] rounded-2xl p-6 overflow-hidden relative;
+  /* Bookmark list row */
+  .item-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 4px 0.75rem;
+    transition: background 100ms ease;
+    cursor: default;
   }
+  .item-row:hover { background: var(--item-hover-bg); }
 
-  /* Input */
+  /* Bookmark link text */
+  .item-link {
+    flex: 1;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--item-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 100ms ease;
+    text-decoration: none;
+  }
+  .item-link:hover { color: var(--item-text-hover); }
+
+  /* Search / text input */
   .input {
-    @apply w-full px-3.5 py-2.5 bg-zinc-900 border border-white/[0.08] rounded-xl text-sm
-           text-zinc-100 placeholder:text-zinc-600
-           focus:outline-none focus:ring-1 focus:ring-violet-500/50 focus:border-violet-500/40
+    @apply w-full px-3 py-1.5 rounded-lg text-xs
+           focus:outline-none focus:ring-1 focus:ring-violet-500/40
            transition-all;
+    background: var(--search-bg);
+    border: 1px solid var(--search-border);
+    color: var(--search-text);
+  }
+  .input::placeholder { color: var(--search-placeholder); }
+
+  /* Primary action button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5
+           bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold rounded-lg
+           transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed
+           whitespace-nowrap shrink-0;
   }
 
-  /* Buttons */
-  .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl
-           transition-colors active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
-  }
+  /* Secondary / ghost button */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
-           bg-zinc-800 hover:bg-zinc-700 border border-white/[0.06]
-           text-zinc-300 text-sm font-medium rounded-xl transition-colors;
+    @apply inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5
+           text-xs font-medium rounded-lg transition-colors whitespace-nowrap shrink-0;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: var(--item-text);
   }
+  .btn-secondary:hover { background: rgba(255,255,255,0.14); }
+
+  /* Theme toggle pill */
+  .theme-toggle {
+    @apply flex items-center justify-center w-7 h-7 rounded-lg transition-colors;
+    color: var(--text-muted);
+  }
+  .theme-toggle:hover { background: var(--item-hover-bg); }
 }
