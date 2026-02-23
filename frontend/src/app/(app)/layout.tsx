@@ -32,7 +32,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <SearchProvider>
       <div className="relative min-h-screen flex flex-col" style={{ zIndex: 1 }}>
         <Navbar />
-        <main className="flex-1 flex overflow-hidden">{children}</main>
+        <main className="flex-1 w-full">{children}</main>
       </div>
     </SearchProvider>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Zap, Upload, Sun, Moon, LogOut, Search } from 'lucide-react';
@@ -15,6 +15,10 @@ export default function Navbar() {
   const { theme, toggle } = useTheme();
   const { setSearch } = useSearch();
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
 
   async function handleLogout() {
     await logout();
@@ -33,10 +37,10 @@ export default function Navbar() {
 
   return (
     <header
-      className="sticky top-0 z-50 border-b backdrop-blur-xl"
+      className="sticky top-0 z-50 border-b"
       style={{ background: 'var(--nav-bg)', borderColor: 'var(--nav-border)' }}
     >
-      <div className="flex items-center h-10 px-4 gap-4">
+      <div className="flex items-center h-9 px-4 gap-4">
 
         {/* Logo */}
         <Link href="/bookmarks" className="flex items-center gap-2 shrink-0">

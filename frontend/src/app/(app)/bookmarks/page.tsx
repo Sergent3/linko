@@ -81,58 +81,52 @@ export default function BookmarksPage() {
   });
 
   /* ── Render ────────────────────────────────────────────────────────────── */
+  if (loading) return (
+    <div className="flex items-center justify-center h-64 w-full">
+      <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+    </div>
+  );
+
+  if (groups.length === 0) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-4 w-full">
+      <div className="w-14 h-14 rounded-2xl flex items-center justify-center widget-card">
+        <Search className="w-6 h-6" style={{ color: 'var(--text-muted)' }} />
+      </div>
+      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+        {search ? 'Nessun risultato' : 'Nessun segnalibro — aggiungine uno!'}
+      </p>
+      {!search && (
+        <button onClick={() => setShowAdd(true)} className="btn-primary">
+          <Plus className="w-3.5 h-3.5" /> Aggiungi il primo
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-[1800px] mx-auto px-4 sm:px-10 py-8">
+    <>
+      {/* Action bar */}
+      <div className="flex items-center justify-between px-8 pt-6 pb-0 max-w-[1800px] mx-auto w-full">
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          {filtered.length} {filtered.length === 1 ? 'segnalibro' : 'segnalibri'}
+          {search && <span> per <em>"{search}"</em></span>}
+        </p>
+        <button onClick={() => setShowAdd(true)} className="btn-primary">
+          <Plus className="w-3.5 h-3.5" />
+          <span className="hidden sm:block">Aggiungi</span>
+        </button>
+      </div>
 
-        {loading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-          </div>
-
-        ) : groups.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center widget-card">
-              <Search className="w-6 h-6" style={{ color: 'var(--text-muted)' }} />
-            </div>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-              {search ? 'Nessun risultato' : 'Nessun segnalibro — aggiungine uno!'}
-            </p>
-            {!search && (
-              <button onClick={() => setShowAdd(true)} className="btn-primary">
-                <Plus className="w-3.5 h-3.5" /> Aggiungi il primo
-              </button>
-            )}
-          </div>
-
-        ) : (
-          <>
-            {/* Action bar */}
-            <div className="flex items-center justify-between mb-6">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {filtered.length} {filtered.length === 1 ? 'segnalibro' : 'segnalibri'}
-                {search && <span> per <em>"{search}"</em></span>}
-              </p>
-              <button onClick={() => setShowAdd(true)} className="btn-primary">
-                <Plus className="w-3.5 h-3.5" />
-                <span className="hidden sm:block">Aggiungi</span>
-              </button>
-            </div>
-
-            {/* Masonry grid */}
-            <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6">
-              {groups.map(g => (
-                <BookmarkWidget
-                  key={g.key ?? '__uncategorized__'}
-                  title={g.name}
-                  bookmarks={g.bookmarks}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
+      {/* Masonry grid */}
+      <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6 p-8 max-w-[1800px] mx-auto">
+        {groups.map(g => (
+          <BookmarkWidget
+            key={g.key ?? '__uncategorized__'}
+            title={g.name}
+            bookmarks={g.bookmarks}
+            onDelete={handleDelete}
+          />
+        ))}
       </div>
 
       {showAdd && (
@@ -142,6 +136,6 @@ export default function BookmarksPage() {
           onCreated={handleCreated}
         />
       )}
-    </div>
+    </>
   );
 }
