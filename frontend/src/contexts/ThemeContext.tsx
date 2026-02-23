@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 
-export type Theme = 'dark' | 'light';
+export type Theme = 'light' | 'dark';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -12,19 +12,19 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Default dark; will sync from localStorage in the effect below
-  const [theme, setTheme] = useState<Theme>('dark');
+  // Default is now LIGHT (:root vars)
+  const [theme, setTheme] = useState<Theme>('light');
 
   useEffect(() => {
     const stored = localStorage.getItem('linko_theme') as Theme | null;
-    const initial: Theme = stored === 'light' ? 'light' : 'dark';
+    const initial: Theme = stored === 'dark' ? 'dark' : 'light';
     setTheme(initial);
     document.documentElement.setAttribute('data-theme', initial);
   }, []);
 
   function toggle() {
     setTheme(prev => {
-      const next: Theme = prev === 'dark' ? 'light' : 'dark';
+      const next: Theme = prev === 'light' ? 'dark' : 'light';
       localStorage.setItem('linko_theme', next);
       document.documentElement.setAttribute('data-theme', next);
       return next;

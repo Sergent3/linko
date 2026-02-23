@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { SearchProvider } from '@/contexts/SearchContext';
 import { tokens } from '@/lib/api';
 import Navbar from '@/components/layout/Navbar';
 
@@ -11,9 +12,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && !user && !tokens.access) {
-      router.replace('/login');
-    }
+    if (!loading && !user && !tokens.access) router.replace('/login');
   }, [user, loading, router]);
 
   const spinner = (
@@ -29,11 +28,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user && !tokens.access) return spinner;
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Photo overlay — color depends on theme via CSS var */}
-      <div className="fixed inset-0 -z-10 pointer-events-none" style={{ background: 'var(--overlay)' }} />
-      <Navbar />
-      <main className="flex-1 flex overflow-hidden">{children}</main>
-    </div>
+    /* body::before handles the overlay — no extra div needed here */
+    <SearchProvider>
+      <div className="relative min-h-screen flex flex-col" style={{ zIndex: 1 }}>
+        <Navbar />
+        <main className="flex-1 flex overflow-hidden">{children}</main>
+      </div>
+    </SearchProvider>
   );
 }

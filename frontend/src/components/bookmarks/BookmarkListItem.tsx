@@ -9,39 +9,36 @@ interface Props {
   onDelete: (id: string) => void;
 }
 
-/** Always uses Google Favicon Service (sz=32) as the definitive source. */
-function Favicon({ url }: { url: string }) {
-  const [failed, setFailed] = useState(false);
+export default function BookmarkListItem({ bookmark, onDelete }: Props) {
+  const [imgFailed, setImgFailed] = useState(false);
 
-  const src = (() => {
-    try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`; }
+  const domain = (() => {
+    try { return new URL(bookmark.url).hostname; }
     catch { return ''; }
   })();
 
-  if (!src || failed) {
-    return <div className="w-4 h-4 rounded-sm" style={{ background: 'var(--widget-divider)' }} />;
-  }
+  const faviconUrl = domain
+    ? `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+    : '';
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt=""
-      width={16}
-      height={16}
-      className="w-4 h-4 rounded-sm"
-      style={{ objectFit: 'contain' }}
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-export default function BookmarkListItem({ bookmark, onDelete }: Props) {
-  return (
-    <li className="item-row group border-b" style={{ borderColor: 'var(--widget-divider)' }}>
+    <li className="item-row group">
       {/* Favicon */}
       <div className="w-4 h-4 shrink-0 flex items-center justify-center">
-        <Favicon url={bookmark.url} />
+        {faviconUrl && !imgFailed ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={faviconUrl}
+            alt=""
+            width={16}
+            height={16}
+            className="w-4 h-4 rounded-sm"
+            style={{ objectFit: 'contain' }}
+            onError={() => setImgFailed(true)}
+          />
+        ) : (
+          <div className="w-3.5 h-3.5 rounded-sm" style={{ background: 'var(--widget-border)' }} />
+        )}
       </div>
 
       {/* Title */}
@@ -58,9 +55,8 @@ export default function BookmarkListItem({ bookmark, onDelete }: Props) {
       {/* Delete — fades in on row hover */}
       <button
         onClick={e => { e.preventDefault(); onDelete(bookmark.id); }}
-        className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100
-                   transition-opacity duration-150 hover:text-red-400"
-        style={{ color: 'var(--widget-header-text)' }}
+        className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150 hover:text-red-500"
+        style={{ color: 'var(--text-muted)' }}
       >
         <Trash2 className="w-3 h-3" />
       </button>

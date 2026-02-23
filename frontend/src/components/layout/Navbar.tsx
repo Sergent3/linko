@@ -1,20 +1,29 @@
 'use client';
 
+import { useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { Zap, Upload, LogOut, Sun, Moon } from 'lucide-react';
+import { Zap, Upload, Sun, Moon, LogOut, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useSearch } from '@/contexts/SearchContext';
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, toggle } = useTheme();
+  const { setSearch } = useSearch();
+  const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function handleLogout() {
     await logout();
     router.push('/login');
+  }
+
+  function handleSearch(value: string) {
+    if (searchRef.current) clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => setSearch(value), 250);
   }
 
   const nav = [
@@ -24,41 +33,32 @@ export default function Navbar() {
 
   return (
     <header
-      className="sticky top-0 z-30 border-b"
-      style={{
-        background: 'var(--bar-bg)',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
-        borderColor: 'var(--bar-border)',
-      }}
+      className="sticky top-0 z-50 border-b backdrop-blur-xl"
+      style={{ background: 'var(--nav-bg)', borderColor: 'var(--nav-border)' }}
     >
-      <div className="flex items-center h-10 px-5 gap-4">
+      <div className="flex items-center h-10 px-4 gap-4">
 
         {/* Logo */}
         <Link href="/bookmarks" className="flex items-center gap-2 shrink-0">
           <div className="w-5 h-5 rounded-md bg-violet-600 flex items-center justify-center">
             <Zap className="w-3 h-3 text-white" />
           </div>
-          <span className="font-display font-bold text-sm hidden sm:block tracking-tight"
-            style={{ color: 'var(--text-strong)' }}>
+          <span className="font-display font-bold text-sm tracking-tight hidden sm:block"
+            style={{ color: 'var(--text-main)' }}>
             Linko
           </span>
         </Link>
 
-        <div className="h-3.5 w-px shrink-0" style={{ background: 'var(--widget-border)' }} />
-
         {/* Nav tabs */}
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-0.5 shrink-0">
           {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname.startsWith(href);
             return (
-              <Link
-                key={href}
-                href={href}
+              <Link key={href} href={href}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors"
                 style={{
-                  background: active ? 'rgba(139,92,246,0.18)' : 'transparent',
-                  color: active ? '#a78bfa' : 'var(--text-muted)',
+                  background: active ? 'rgba(139,92,246,0.15)' : 'transparent',
+                  color: active ? '#8b5cf6' : 'var(--text-muted)',
                 }}
               >
                 {Icon && <Icon className="w-3 h-3" />}
@@ -68,32 +68,44 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* ── Right side ─────────────────────────────────────────────────── */}
-        <div className="ml-auto flex items-center gap-2">
+        {/* Search — integrated in navbar, drives widget filter via SearchContext */}
+        <div className="flex-1 max-w-md relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+            style={{ color: 'var(--search-placeholder)' }} />
+          <input
+            type="search"
+            placeholder="Cerca segnalibri…"
+            onChange={e => handleSearch(e.target.value)}
+            className="search-input"
+          />
+        </div>
+
+        {/* Right side */}
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
           {user && (
-            <span className="hidden lg:block text-[11px] font-mono truncate max-w-[200px]"
+            <span className="hidden xl:block text-[11px] font-mono truncate max-w-[180px]"
               style={{ color: 'var(--text-muted)' }}>
               {user.email}
             </span>
           )}
 
-          {/* Theme toggle — always visible, with label on md+ */}
+          {/* Theme toggle */}
           <button
             onClick={toggle}
-            className="theme-toggle flex items-center gap-1.5 px-2 h-7 rounded-lg text-[11px] font-medium transition-colors"
-            title={theme === 'dark' ? 'Tema chiaro' : 'Tema scuro'}
+            title={theme === 'light' ? 'Tema scuro' : 'Tema chiaro'}
+            className="p-1.5 rounded-full transition-colors"
             style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--item-hover-bg)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
           >
-            {theme === 'dark'
-              ? <><Sun  className="w-3.5 h-3.5" /><span className="hidden md:block">Chiaro</span></>
-              : <><Moon className="w-3.5 h-3.5" /><span className="hidden md:block">Scuro</span></>
-            }
+            {theme === 'light'
+              ? <Moon className="w-4 h-4" />
+              : <Sun  className="w-4 h-4" />}
           </button>
 
           {/* Logout */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-2.5 h-7 text-[11px] rounded-lg transition-colors"
+          <button onClick={handleLogout}
+            className="flex items-center gap-1.5 px-2 py-1 text-[11px] rounded-lg transition-colors"
             style={{ color: 'var(--text-muted)' }}
             onMouseEnter={e => {
               (e.currentTarget as HTMLElement).style.color = '#f87171';
@@ -108,6 +120,7 @@ export default function Navbar() {
             <span className="hidden sm:block">Esci</span>
           </button>
         </div>
+
       </div>
     </header>
   );
