@@ -3,45 +3,23 @@
 @tailwind utilities;
 
 @layer base {
-  /* ── Light mode ────────────────────────────────────────────────────────────── */
-  :root,
-  html[data-theme='light'] {
-    --bg-image:           url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?fit=crop&w=1920&q=80');
-    --overlay:            rgba(240, 242, 245, 0.72);   /* nebbia leggera sopra la foto */
-    --card-bg:            #ffffff;
-    --card-border:        #e2e4e8;
-    --card-header-bg:     #5b21b6;   /* violet-800 — header band */
-    --card-header-text:   #ffffff;
-    --card-divider:       #f0f1f3;
-    --card-shadow:        0 1px 4px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.05);
-    --text-main:          #1a1a2e;
-    --text-muted:         #6b7280;
-    --text-hover:         #7c3aed;
-    --item-hover-bg:      #f5f3ff;
-    --nav-bg:             rgba(255,255,255,0.88);
-    --nav-border:         #e2e4e8;
-    --search-bg:          #f9fafb;
-    --search-border:      #d1d5db;
-    --search-text:        #1a1a2e;
-    --search-placeholder: #9ca3af;
-  }
-
   /* ── Dark mode ─────────────────────────────────────────────────────────────── */
+  :root,
   html[data-theme='dark'] {
-    --bg-image:           url('https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?fit=crop&w=1920&q=80');
+    --bg-image:           url('/bg-dark.png');
     --overlay:            rgba(10, 10, 18, 0.78);
-    --card-bg:            #1e1e2e;
-    --card-border:        #313148;
-    --card-header-bg:     #4c1d95;   /* violet-900 */
+    --card-bg:            rgba(15, 23, 42, 0.7);
+    --card-border:        rgba(255, 255, 255, 0.05);
+    --card-header-bg:     rgba(15, 23, 42, 0.7);
     --card-header-text:   #ede9fe;
-    --card-divider:       #2a2a3e;
+    --card-divider:       rgba(255, 255, 255, 0.05);
     --card-shadow:        0 1px 6px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04);
     --text-main:          #e8e8f0;
     --text-muted:         #9ca3af;
     --text-hover:         #a78bfa;
-    --item-hover-bg:      #2d2b50;
+    --item-hover-bg:      rgba(255, 255, 255, 0.05);
     --nav-bg:             rgba(14,14,22,0.90);
-    --nav-border:         #2a2a3e;
+    --nav-border:         rgba(255, 255, 255, 0.05);
     --search-bg:          #252535;
     --search-border:      #3a3a50;
     --search-text:        #e8e8f0;
@@ -55,7 +33,7 @@
 
   /* ── Background foto ───────────────────────────────────────────────────────── */
   body {
-    background-color: #dde1e7;
+    background-color: #020617;
     background-image: var(--bg-image);
     background-attachment: fixed;
     background-size: cover;
@@ -69,8 +47,9 @@
     position: fixed;
     inset: 0;
     background: var(--overlay);
+    backdrop-filter: blur(16px);
     pointer-events: none;
-    z-index: 0;
+    z-index: -1;
   }
 
   /* Auth pages */
@@ -85,7 +64,7 @@
 @layer components {
   /* ── Widget card — start.me style ─────────────────────────────────────────── */
   .widget-card {
-    @apply break-inside-avoid mb-5 rounded overflow-hidden;
+    @apply rounded-xl overflow-hidden;
     background-color: var(--card-bg);
     border: 1px solid var(--card-border);
     box-shadow: var(--card-shadow);

@@ -106,19 +106,16 @@ export default function BookmarksPage() {
   return (
     <>
       {/* Action bar */}
-      <div className="flex items-center justify-between px-8 pt-6 pb-0 max-w-[1800px] mx-auto w-full">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          {filtered.length} {filtered.length === 1 ? 'segnalibro' : 'segnalibri'}
-          {search && <span> per <em>"{search}"</em></span>}
-        </p>
+      <div className="flex items-center justify-between px-8 pt-6 pb-4 max-w-[1800px] mx-auto w-full">
+        <h1 className="text-lg font-semibold">Dashboard</h1>
         <button onClick={() => setShowAdd(true)} className="btn-primary">
           <Plus className="w-3.5 h-3.5" />
-          <span className="hidden sm:block">Aggiungi</span>
+          <span className="hidden sm:block">Aggiungi Segnalibro</span>
         </button>
       </div>
 
-      {/* Masonry grid */}
-      <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6 p-8 max-w-[1800px] mx-auto">
+      {/* Widget grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-8 max-w-[1800px] mx-auto">
         {groups.map(g => (
           <BookmarkWidget
             key={g.key ?? '__uncategorized__'}
