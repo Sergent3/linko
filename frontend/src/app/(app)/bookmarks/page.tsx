@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Settings } from 'lucide-react';
-import Widget from '@/components/Widget'; // Usa il componente Widget generico
+import { Plus } from 'lucide-react';
+import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
 import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
 import { useSearch } from '@/contexts/SearchContext';
@@ -13,11 +13,10 @@ export default function BookmarksDashboardPage() {
   const [folderList, setFolderList] = useState<Folder[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const [activePageName, setActivePageName] = useState('Bookmarks Dashboard'); // Titolo della pagina
-
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const { search } = useSearch();
 
-  /* ── Data loading ──────────────────────────────────────────────────────── */
+  /* ---- data loading ---- */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -25,89 +24,142 @@ export default function BookmarksDashboardPage() {
         bookmarksApi.list({ page: 1, limit: 500 }),
         foldersApi.list(),
       ]);
-      setAllBookmarks(bRes.data);
-      setFolderList(fList);
-    } catch { /* silent fail */ }
-    finally { setLoading(false); }
+      setAllBookmarks(bRes.data ?? []);
+      setFolderList(fList ?? []);
+    } catch {
+      // ignore
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  /* ── Handlers ──────────────────────────────────────────────────────────── */
-  function handleCreated(b: Bookmark) {
-    setAllBookmarks(prev => [b, ...prev]);
-  }
+  /* ---- handlers ---- */
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await bookmarksApi.delete(id);
+      setAllBookmarks((prev) => prev.filter((b) => b.id !== id));
+    } catch { /* ignore */ }
+  }, []);
 
-  /* ── Filter & group bookmarks into widgets ───────────────────────────────── */
-  const q = search.toLowerCase();
-  const filtered = q
-    ? allBookmarks.filter(b =>
-        b.title.toLowerCase().includes(q) || b.url.toLowerCase().includes(q))
+  const handleCreated = useCallback((bm: Bookmark) => {
+    setAllBookmarks((prev) => [bm, ...prev]);
+  }, []);
+
+  /* ---- filtering ---- */
+  const filtered = search
+    ? allBookmarks.filter(
+        (b) =>
+          b.title?.toLowerCase().includes(search.toLowerCase()) ||
+          b.url?.toLowerCase().includes(search.toLowerCase())
+      )
     : allBookmarks;
 
-  const groupedWidgets = new Map<string, { title: string; bookmarks: Bookmark[] }>();
+  /* ---- group by folder ---- */
+  const grouped: { folder: Folder | null; items: Bookmark[] }[] = [];
 
-  // Group bookmarks by folder
-  filtered.forEach(b => {
-    const folderName = b.folder?.name || 'Uncategorized';
-    if (!groupedWidgets.has(folderName)) {
-      groupedWidgets.set(folderName, { title: folderName, bookmarks: [] });
-    }
-    groupedWidgets.get(folderName)!.bookmarks.push(b);
+  const noFolder = filtered.filter((b) => !b.folderId);
+  if (noFolder.length > 0 || folderList.length === 0) {
+    grouped.push({ folder: null, items: noFolder });
+  }
+
+  folderList.forEach((f) => {
+    const items = filtered.filter((b) => b.folderId === f.id);
+    grouped.push({ folder: f, items });
   });
 
-  const widgetsData = Array.from(groupedWidgets.values()).sort((a, b) => a.title.localeCompare(b.title));
+  const visible =
+    activeFolder === null
+      ? grouped
+      : grouped.filter((g) => (g.folder?.id ?? 'uncategorized') === activeFolder);
 
-  /* ── Render ────────────────────────────────────────────────────────────── */
-  if (loading) return (
-    <div className="flex items-center justify-center min-h-screen pt-16">
-      <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-    </div>
-  );
+  const allFolders: { id: string; name: string }[] = [
+    { id: '__all__', name: 'Tutti' },
+    ...folderList.map((f) => ({ id: f.id, name: f.name })),
+    ...(noFolder.length > 0 ? [{ id: 'uncategorized', name: 'Senza categoria' }] : []),
+  ];
 
   return (
-    <div
-      className="min-h-screen bg-cover bg-center transition-all duration-300 relative"
-      style={{
-        backgroundImage: `url('https://images.unsplash.com/photo-1557683316-973673baf923?q=80&w=2000&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D')`,
-      }}
-    >
-      {/* Background Overlay and blur */}
-      <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] z-10"></div>
+    <div style={{ minHeight: '100vh', background: '#2b2b2b' }}>
+      {/* Top header */}
+      <div className="top-header">
+        <span className="page-title">Bookmarks</span>
 
-      <main className="relative z-20 pt-20 pb-8 px-4 md:px-8 lg:px-12">
-        {/* Page Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-white drop-shadow-lg">{activePageName}</h1>
-          <div className="flex items-center space-x-3">
-            <button onClick={() => setShowAdd(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700 transition-colors shadow-md">
-              <Plus size={20} />
-              <span>Add Bookmark</span>
-            </button>
-            <button className="bg-white/20 text-white p-2 rounded-lg hover:bg-white/30 transition-colors shadow-md">
-              <Settings size={20} />
-            </button>
-          </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            marginLeft: 20,
+            gap: 0,
+            overflowX: 'auto',
+            flex: 1,
+          }}
+        >
+          {allFolders.map((f) => (
+            <span
+              key={f.id}
+              className={`folder-tab${
+                (f.id === '__all__' && activeFolder === null) ||
+                f.id === activeFolder
+                  ? ' active'
+                  : ''
+              }`}
+              onClick={() =>
+                setActiveFolder(f.id === '__all__' ? null : f.id)
+              }
+            >
+              {f.name}
+            </span>
+          ))}
         </div>
 
-        {/* Widget Grid */}
-        {widgetsData.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {widgetsData.map((widget, index) => (
-              <Widget key={index} title={widget.title} type="bookmarks" content={widget.bookmarks} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-64 gap-4 w-full text-white">
-            <p className="text-lg">Nessun segnalibro trovato.</p>
-            {!search && (
-              <button onClick={() => setShowAdd(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700 transition-colors shadow-md">
-                <Plus size={20} /> Aggiungi il primo
-              </button>
-            )}
-          </div>
-        )}
-      </main>
+        <button
+          className="btn-add"
+          onClick={() => setShowAdd(true)}
+          style={{ marginLeft: 12, flexShrink: 0 }}
+        >
+          <Plus size={13} />
+          Aggiungi
+        </button>
+      </div>
+
+      {loading ? (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            height: 200,
+            color: '#888',
+          }}
+        >
+          Caricamento...
+        </div>
+      ) : (
+        <div className="bookmarks-grid">
+          {visible.map(({ folder, items }) => (
+            <BookmarkWidget
+              key={folder?.id ?? 'uncategorized'}
+              title={folder?.name ?? 'Senza categoria'}
+              bookmarks={items}
+              onDelete={handleDelete}
+              onAddClick={() => setShowAdd(true)}
+            />
+          ))}
+          {visible.length === 0 && (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '60px 0',
+                color: '#666',
+              }}
+            >
+              {search ? 'Nessun risultato' : 'Nessun segnalibro. Aggiungine uno!'}
+            </div>
+          )}
+        </div>
+      )}
 
       {showAdd && (
         <AddBookmarkModal

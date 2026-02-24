@@ -1,6 +1,6 @@
+'use client';
+
 import React, { useState } from 'react';
-import Navbar from '@/components/layout/Navbar';
-import Sidebar from '@/components/layout/Sidebar';
 import Widget from '@/components/Widget';
 import { Settings, Plus } from 'lucide-react';
 
@@ -93,19 +93,9 @@ const MOCK_DATA: PageData[] = [
 ];
 
 const DashboardPage: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activePageId, setActivePageId] = useState(MOCK_DATA[0].id);
 
   const activePage = MOCK_DATA.find((page) => page.id === activePageId);
-
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  const handlePageSelect = (id: string) => {
-    setActivePageId(id);
-    setIsSidebarOpen(false); // Close sidebar after selecting a page
-  };
 
   return (
     <div
@@ -117,15 +107,7 @@ const DashboardPage: React.FC = () => {
       {/* Background Overlay */}
       <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px] z-10"></div>
 
-      <Navbar onMenuClick={toggleSidebar} />
-      <Sidebar
-        isOpen={isSidebarOpen}
-        toggleSidebar={toggleSidebar}
-        pages={MOCK_DATA.map((page) => ({ ...page, active: page.id === activePageId }))}
-        onPageSelect={handlePageSelect}
-      />
-
-      <main className={`relative z-20 pt-20 pb-8 px-4 md:px-8 lg:px-12 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-0'}`}>
+      <main className="relative z-20 pt-20 pb-8 px-4 md:px-8 lg:px-12">
         {/* Page Header */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-white drop-shadow-lg">{activePage?.name || 'Dashboard'}</h1>

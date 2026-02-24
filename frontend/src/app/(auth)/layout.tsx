@@ -3,18 +3,70 @@ import { Zap } from 'lucide-react';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen page-bg-auth flex flex-col">
-      <header className="px-6 py-5">
-        <Link href="/" className="inline-flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#1e1e1e',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* Header */}
+      <header
+        style={{
+          padding: '12px 20px',
+          borderBottom: '1px solid #333',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        <Link
+          href="/"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            textDecoration: 'none',
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              background: '#3a7bd5',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Zap size={16} color="white" />
           </div>
-          <span className="font-display font-bold text-sm text-zinc-100">Linko</span>
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: '#e0e0e0',
+              letterSpacing: '-0.3px',
+            }}
+          >
+            Linko
+          </span>
         </Link>
       </header>
 
-      <div className="flex flex-1 items-center justify-center px-4">
-        <div className="w-full max-w-sm animate-fade-up">{children}</div>
+      {/* Content */}
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px 16px',
+        }}
+      >
+        <div style={{ width: '100%', maxWidth: 380 }}>{children}</div>
       </div>
     </div>
   );
