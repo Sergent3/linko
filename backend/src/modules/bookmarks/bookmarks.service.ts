@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma';
-import { enrichQueue, healthCheckQueue } from '../../lib/queue';
+import { enrichQueue, healthCheckQueue, tagQueue } from '../../lib/queue';
 import { normalizeAndHash } from '../../utils/url-hash';
 import { getTagsByDomain, mergeTags } from '../../utils/tag-engine';
 import { AppError } from '../../middleware/error.middleware';
@@ -97,6 +97,18 @@ export async function createBookmark(dto: CreateBookmarkDto, userId: string) {
   ]);
   await healthCheckQueue.addBulk([
     { name: 'health-check', data: { bookmarkId: bookmark.id, url: normalized } },
+  ]);
+  await tagQueue.addBulk([
+    {
+      name: 'tag',
+      data: {
+        bookmarkId: bookmark.id,
+        userId,
+        url: normalized,
+        title: dto.title,
+        description: dto.description,
+      },
+    },
   ]);
 
   return bookmark;

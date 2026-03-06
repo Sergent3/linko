@@ -9,6 +9,7 @@ export default function SaveQuickPage() {
   const [folderId, setFolderId] = useState('');
   const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'done' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const [firstTime, setFirstTime] = useState(false);
 
   const params = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search)
@@ -16,7 +17,7 @@ export default function SaveQuickPage() {
   const url   = params.get('url')   ?? '';
   const title = params.get('title') ?? '';
 
-  /* ── Carica cartelle ── */
+  /* ── Carica cartelle + controlla se è il primo utilizzo ── */
   useEffect(() => {
     const token = localStorage.getItem('linko_access');
     if (!token) {
@@ -25,25 +26,25 @@ export default function SaveQuickPage() {
       return;
     }
 
-    fetch('/api/v1/folders', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.ok ? r.json() : [])
-      .then((data: Folder[]) => {
-        setFolders(data ?? []);
+    const headers = { Authorization: `Bearer ${token}` };
+
+    Promise.all([
+      fetch('/api/v1/folders', { headers }).then((r) => r.ok ? r.json() : []),
+      fetch('/api/v1/bookmarks?limit=1&page=1', { headers }).then((r) => r.ok ? r.json() : null),
+    ])
+      .then(([folderData, bookmarkData]) => {
+        setFolders(folderData ?? []);
+        if (bookmarkData?.meta?.total === 0) setFirstTime(true);
         setStatus('ready');
       })
-      .catch(() => setStatus('ready')); // nessuna cartella, va bene lo stesso
+      .catch(() => setStatus('ready'));
   }, []);
 
   /* ── Salva ── */
   async function save() {
     setStatus('saving');
     const token = localStorage.getItem('linko_access');
-    if (!token) {
-      notify(false, 'Non autenticato');
-      return;
-    }
+    if (!token) { notify(false, 'Non autenticato'); return; }
 
     let effectiveTitle = title.trim();
     if (!effectiveTitle) {
@@ -53,15 +54,8 @@ export default function SaveQuickPage() {
     try {
       const res = await fetch('/api/v1/bookmarks', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          url,
-          title: effectiveTitle,
-          ...(folderId ? { folderId } : {}),
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ url, title: effectiveTitle, ...(folderId ? { folderId } : {}) }),
       });
 
       if (res.status === 409) { notify(true, 'exists'); return; }
@@ -76,6 +70,17 @@ export default function SaveQuickPage() {
     window.opener?.postMessage({ ok, detail }, window.location.origin);
     setStatus('done');
     setTimeout(() => window.close(), 800);
+  }
+
+  /* ── Apri /import nella finestra principale e chiudi il popup ── */
+  function openImport() {
+    const importUrl = window.location.origin + '/import';
+    if (window.opener) {
+      window.opener.location.assign(importUrl);
+    } else {
+      window.open(importUrl, '_blank');
+    }
+    window.close();
   }
 
   /* ── UI ── */
@@ -119,102 +124,162 @@ export default function SaveQuickPage() {
         {/* Body */}
         <div style={{ padding: '14px 16px' }}>
 
-          {/* URL */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
-              Pagina
-            </div>
-            <div style={{ fontSize: 12, color: '#ddd', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {title || domain}
-            </div>
-            <div style={{ fontSize: 10, color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
-              {domain}
-            </div>
-          </div>
-
-          {/* Stato errore */}
-          {status === 'error' && (
-            <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 10 }}>{message}</div>
-          )}
-
-          {/* Selettore cartella */}
-          {(status === 'ready' || status === 'saving') && folders.length > 0 && (
-            <div style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
-                Categoria
+          {/* ── Prima volta: nessun bookmark in Linko ── */}
+          {status === 'ready' && firstTime && (
+            <>
+              <div style={{
+                background: '#1a2a1a',
+                border: '1px solid #2a4a2a',
+                borderRadius: 6,
+                padding: '10px 12px',
+                marginBottom: 14,
+              }}>
+                <div style={{ fontSize: 12, color: '#6ee7b7', fontWeight: 600, marginBottom: 4 }}>
+                  Prima volta su Linko?
+                </div>
+                <div style={{ fontSize: 11, color: '#888', lineHeight: 1.5 }}>
+                  Non hai ancora nessun bookmark salvato. Vuoi importare tutti i preferiti
+                  dal tuo browser in un colpo solo?
+                </div>
               </div>
-              <select
-                value={folderId}
-                onChange={(e) => setFolderId(e.target.value)}
-                disabled={status === 'saving'}
+
+              <button
+                onClick={openImport}
                 style={{
                   width: '100%',
-                  background: '#222',
-                  border: '1px solid #555',
-                  borderRadius: 4,
-                  color: '#ddd',
-                  padding: '6px 8px',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="">Nessuna categoria</option>
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Bottoni */}
-          {(status === 'ready' || status === 'saving') && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => window.close()}
-                disabled={status === 'saving'}
-                style={{
-                  flex: 1,
-                  background: '#555',
-                  border: '1px solid #666',
-                  borderRadius: 4,
-                  color: '#ccc',
-                  padding: '7px 0',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                onClick={save}
-                disabled={status === 'saving'}
-                style={{
-                  flex: 2,
-                  background: status === 'saving' ? '#2a5a8a' : '#3a7bd5',
+                  background: '#3a7bd5',
                   border: 'none',
                   borderRadius: 4,
                   color: '#fff',
-                  padding: '7px 0',
+                  padding: '8px 0',
                   fontSize: 12,
                   fontWeight: 600,
-                  cursor: status === 'saving' ? 'not-allowed' : 'pointer',
+                  cursor: 'pointer',
+                  marginBottom: 8,
                 }}
               >
-                {status === 'saving' ? 'Salvataggio…' : 'Salva'}
+                Importa tutti i preferiti dal browser
               </button>
-            </div>
+
+              <button
+                onClick={() => setFirstTime(false)}
+                style={{
+                  width: '100%',
+                  background: 'transparent',
+                  border: '1px solid #555',
+                  borderRadius: 4,
+                  color: '#888',
+                  padding: '6px 0',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                No, salva solo questa pagina
+              </button>
+            </>
           )}
 
-          {status === 'loading' && (
-            <div style={{ textAlign: 'center', color: '#888', fontSize: 12, padding: '8px 0' }}>
-              Caricamento…
-            </div>
-          )}
+          {/* ── Flusso normale ── */}
+          {!(status === 'ready' && firstTime) && (
+            <>
+              {/* URL */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
+                  Pagina
+                </div>
+                <div style={{ fontSize: 12, color: '#ddd', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {title || domain}
+                </div>
+                <div style={{ fontSize: 10, color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
+                  {domain}
+                </div>
+              </div>
 
-          {status === 'done' && (
-            <div style={{ textAlign: 'center', color: '#6ee7b7', fontSize: 13, padding: '8px 0' }}>
-              ✓ Fatto
-            </div>
+              {/* Stato errore */}
+              {status === 'error' && (
+                <div style={{ color: '#fca5a5', fontSize: 12, marginBottom: 10 }}>{message}</div>
+              )}
+
+              {/* Selettore cartella */}
+              {(status === 'ready' || status === 'saving') && folders.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
+                    Categoria
+                  </div>
+                  <select
+                    value={folderId}
+                    onChange={(e) => setFolderId(e.target.value)}
+                    disabled={status === 'saving'}
+                    style={{
+                      width: '100%',
+                      background: '#222',
+                      border: '1px solid #555',
+                      borderRadius: 4,
+                      color: '#ddd',
+                      padding: '6px 8px',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">Nessuna categoria</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Bottoni */}
+              {(status === 'ready' || status === 'saving') && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => window.close()}
+                    disabled={status === 'saving'}
+                    style={{
+                      flex: 1,
+                      background: '#555',
+                      border: '1px solid #666',
+                      borderRadius: 4,
+                      color: '#ccc',
+                      padding: '7px 0',
+                      fontSize: 12,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={save}
+                    disabled={status === 'saving'}
+                    style={{
+                      flex: 2,
+                      background: status === 'saving' ? '#2a5a8a' : '#3a7bd5',
+                      border: 'none',
+                      borderRadius: 4,
+                      color: '#fff',
+                      padding: '7px 0',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: status === 'saving' ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {status === 'saving' ? 'Salvataggio…' : 'Salva'}
+                  </button>
+                </div>
+              )}
+
+              {status === 'loading' && (
+                <div style={{ textAlign: 'center', color: '#888', fontSize: 12, padding: '8px 0' }}>
+                  Caricamento…
+                </div>
+              )}
+
+              {status === 'done' && (
+                <div style={{ textAlign: 'center', color: '#6ee7b7', fontSize: 13, padding: '8px 0' }}>
+                  ✓ Fatto
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

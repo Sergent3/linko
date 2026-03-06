@@ -111,6 +111,7 @@ services:
       SCRAPING_DELAY_MS: ${SCRAPING_DELAY_MS:-1200}
       SCRAPING_TIMEOUT_MS: ${SCRAPING_TIMEOUT_MS:-10000}
       HTTP_CHECK_TIMEOUT_MS: ${HTTP_CHECK_TIMEOUT_MS:-8000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
     volumes:
       - ./worker:/app   # node_modules incluso: Prisma usa binary musl pre-generati sull'host
