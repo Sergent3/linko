@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MousePointer2, Smartphone, Info } from 'lucide-react';
 
 /**
@@ -18,6 +18,8 @@ import { MousePointer2, Smartphone, Info } from 'lucide-react';
 export default function BookmarkletTools() {
   // Inizializziamo a '#' per SSR; viene aggiornato solo lato client
   const [bookmarkletHref, setBookmarkletHref] = useState('#');
+  // Ref per impostare l'href via setAttribute (React blocca javascript: negli href)
+  const linkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     const origin = window.location.origin;
@@ -58,6 +60,8 @@ export default function BookmarkletTools() {
       `}` +
       `})();`;
     setBookmarkletHref(code);
+    // setAttribute bypassa il blocco di React sui javascript: URL
+    if (linkRef.current) linkRef.current.setAttribute('href', code);
   }, []);
 
   return (
@@ -104,11 +108,10 @@ export default function BookmarkletTools() {
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {/* Il link è il bookmarklet vero: draggable, non cliccabile nell'app */}
-            {/* eslint-disable-next-line @typescript-eslint/ban-ts-comment */}
-            {/* @ts-expect-error — href javascript: è intenzionale per il bookmarklet */}
+            {/* href impostato via ref.setAttribute per bypassare il blocco React su javascript: */}
             <a
-              href={bookmarkletHref}
+              ref={linkRef}
+              href="#"
               draggable
               onClick={(e) => e.preventDefault()}
               title="Trascina nella barra dei segnalibri"
