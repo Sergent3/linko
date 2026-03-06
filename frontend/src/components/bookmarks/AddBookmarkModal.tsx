@@ -9,6 +9,9 @@ interface Props {
   folders: Folder[];
   onClose: () => void;
   onCreated: (b: Bookmark) => void;
+  /** Valori pre-compilati dal bookmarklet (opzionali) */
+  initialUrl?: string;
+  initialTitle?: string;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -33,9 +36,15 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 2,
 };
 
-export default function AddBookmarkModal({ folders, onClose, onCreated }: Props) {
-  const [url, setUrl] = useState('');
-  const [title, setTitle] = useState('');
+export default function AddBookmarkModal({
+  folders,
+  onClose,
+  onCreated,
+  initialUrl = '',
+  initialTitle = '',
+}: Props) {
+  const [url, setUrl] = useState(initialUrl);
+  const [title, setTitle] = useState(initialTitle);
   const [folderId, setFolderId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,15 +54,22 @@ export default function AddBookmarkModal({ folders, onClose, onCreated }: Props)
     setError('');
     setLoading(true);
     try {
+      // Se il titolo è vuoto usiamo l'hostname come fallback
+      // (il backend richiede title non vuoto — bookmarks.schema.ts:L7)
+      let effectiveTitle = title.trim();
+      if (!effectiveTitle && url) {
+        try { effectiveTitle = new URL(url).hostname; } catch { effectiveTitle = url; }
+      }
       const created = await bookmarksApi.create({
         url,
-        title,
+        title: effectiveTitle,
         folderId: folderId || undefined,
       });
       onCreated(created);
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Errore durante il salvataggio');
+      const msg = err instanceof Error ? err.message : 'Errore durante il salvataggio';
+      setError(msg === 'Session expired' ? 'Sessione scaduta. Ricarica la pagina.' : msg);
     } finally {
       setLoading(false);
     }
@@ -104,7 +120,7 @@ export default function AddBookmarkModal({ folders, onClose, onCreated }: Props)
               color: '#ccc',
             }}
           >
-            Aggiungi Segnalibro
+            {initialUrl ? '⭐ Salva dal Bookmarklet' : 'Aggiungi Segnalibro'}
           </span>
           <button
             onClick={onClose}
@@ -132,18 +148,24 @@ export default function AddBookmarkModal({ folders, onClose, onCreated }: Props)
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://..."
               required
-              autoFocus
+              autoFocus={!initialUrl}
             />
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle}>Titolo</label>
+            <label style={labelStyle}>
+              Titolo
+              <span style={{ color: '#555', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                {' '}(lascia vuoto per usare il dominio)
+              </span>
+            </label>
             <input
               style={inputStyle}
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Lascia vuoto per auto-rilevare"
+              placeholder="Titolo della pagina"
+              autoFocus={!!initialUrl}
             />
           </div>
 

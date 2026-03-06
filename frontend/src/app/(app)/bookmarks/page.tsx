@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
+import BookmarkletTools from '@/components/bookmarks/BookmarkletTools';
 import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
 import { useSearch } from '@/contexts/SearchContext';
 import type { Bookmark, Folder } from '@/types/api';
@@ -14,9 +15,34 @@ export default function BookmarksDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
+
+  // Valori pre-compilati dal bookmarklet (intercettati dai query params)
+  const [bookmarkletUrl, setBookmarkletUrl] = useState('');
+  const [bookmarkletTitle, setBookmarkletTitle] = useState('');
+
   const { search } = useSearch();
 
-  /* ---- data loading ---- */
+  /* ── Intercetta parametri bookmarklet ───────────────────────────────────────
+   * Il bookmarklet apre /bookmarks?add_url=...&add_title=...
+   * Leggiamo i params, apriamo il modal pre-compilato e puliamo l'URL
+   * senza causare un re-render della pagina (history.replaceState).
+   * Non usiamo useSearchParams per evitare il requisito di Suspense boundary.
+   * ────────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const addUrl = params.get('add_url');
+    const addTitle = params.get('add_title');
+
+    if (addUrl) {
+      setBookmarkletUrl(addUrl);
+      setBookmarkletTitle(addTitle ?? '');
+      setShowAdd(true);
+      // Rimuovi i parametri dall'URL senza ricaricare la pagina
+      window.history.replaceState({}, '', '/bookmarks');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Data loading ────────────────────────────────────────────────────────── */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -35,7 +61,7 @@ export default function BookmarksDashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  /* ---- handlers ---- */
+  /* ── Handlers ────────────────────────────────────────────────────────────── */
   const handleDelete = useCallback(async (id: string) => {
     try {
       await bookmarksApi.delete(id);
@@ -45,9 +71,25 @@ export default function BookmarksDashboardPage() {
 
   const handleCreated = useCallback((bm: Bookmark) => {
     setAllBookmarks((prev) => [bm, ...prev]);
+    setActiveFolder(null); // mostra "Tutti" così il nuovo segnalibro è sempre visibile
   }, []);
 
-  /* ---- filtering ---- */
+  function openAddModal() {
+    // Reset dei valori bookmarklet quando il modal viene aperto manualmente
+    setBookmarkletUrl('');
+    setBookmarkletTitle('');
+    setShowAdd(true);
+  }
+
+  function closeModal() {
+    setShowAdd(false);
+    // Pulisci i valori bookmarklet dopo la chiusura così il prossimo
+    // apertura manuale non pre-compila i campi
+    setBookmarkletUrl('');
+    setBookmarkletTitle('');
+  }
+
+  /* ── Filtering & grouping ────────────────────────────────────────────────── */
   const filtered = search
     ? allBookmarks.filter(
         (b) =>
@@ -56,14 +98,12 @@ export default function BookmarksDashboardPage() {
       )
     : allBookmarks;
 
-  /* ---- group by folder ---- */
   const grouped: { folder: Folder | null; items: Bookmark[] }[] = [];
 
   const noFolder = filtered.filter((b) => !b.folderId);
   if (noFolder.length > 0 || folderList.length === 0) {
     grouped.push({ folder: null, items: noFolder });
   }
-
   folderList.forEach((f) => {
     const items = filtered.filter((b) => b.folderId === f.id);
     grouped.push({ folder: f, items });
@@ -80,12 +120,15 @@ export default function BookmarksDashboardPage() {
     ...(noFolder.length > 0 ? [{ id: 'uncategorized', name: 'Senza categoria' }] : []),
   ];
 
+  /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
     <div style={{ minHeight: '100vh', background: '#2b2b2b' }}>
-      {/* Top header */}
+
+      {/* ── Top header ─────────────────────────────────────────────────────── */}
       <div className="top-header">
         <span className="page-title">Bookmarks</span>
 
+        {/* Folder tabs */}
         <div
           style={{
             display: 'flex',
@@ -100,14 +143,11 @@ export default function BookmarksDashboardPage() {
             <span
               key={f.id}
               className={`folder-tab${
-                (f.id === '__all__' && activeFolder === null) ||
-                f.id === activeFolder
+                (f.id === '__all__' && activeFolder === null) || f.id === activeFolder
                   ? ' active'
                   : ''
               }`}
-              onClick={() =>
-                setActiveFolder(f.id === '__all__' ? null : f.id)
-              }
+              onClick={() => setActiveFolder(f.id === '__all__' ? null : f.id)}
             >
               {f.name}
             </span>
@@ -116,7 +156,7 @@ export default function BookmarksDashboardPage() {
 
         <button
           className="btn-add"
-          onClick={() => setShowAdd(true)}
+          onClick={openAddModal}
           style={{ marginLeft: 12, flexShrink: 0 }}
         >
           <Plus size={13} />
@@ -124,6 +164,7 @@ export default function BookmarksDashboardPage() {
         </button>
       </div>
 
+      {/* ── Bookmark grid ──────────────────────────────────────────────────── */}
       {loading ? (
         <div
           style={{
@@ -144,28 +185,28 @@ export default function BookmarksDashboardPage() {
               title={folder?.name ?? 'Senza categoria'}
               bookmarks={items}
               onDelete={handleDelete}
-              onAddClick={() => setShowAdd(true)}
+              onAddClick={openAddModal}
             />
           ))}
           {visible.length === 0 && (
-            <div
-              style={{
-                textAlign: 'center',
-                padding: '60px 0',
-                color: '#666',
-              }}
-            >
+            <div style={{ textAlign: 'center', padding: '60px 0', color: '#666' }}>
               {search ? 'Nessun risultato' : 'Nessun segnalibro. Aggiungine uno!'}
             </div>
           )}
+
+          {/* ── Tools widget ─────────────────────────────────────────────── */}
+          <BookmarkletTools />
         </div>
       )}
 
+      {/* ── Modal ──────────────────────────────────────────────────────────── */}
       {showAdd && (
         <AddBookmarkModal
           folders={folderList}
-          onClose={() => setShowAdd(false)}
+          onClose={closeModal}
           onCreated={handleCreated}
+          initialUrl={bookmarkletUrl}
+          initialTitle={bookmarkletTitle}
         />
       )}
     </div>

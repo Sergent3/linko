@@ -42,7 +42,9 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      router.push('/bookmarks');
+      const params = new URLSearchParams(window.location.search);
+      const next = params.get('next');
+      router.push(next && next.startsWith('/') ? next : '/bookmarks');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Credenziali non valide');
     } finally {

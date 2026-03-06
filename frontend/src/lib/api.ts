@@ -29,6 +29,7 @@ export const tokens = {
   clear() {
     localStorage.removeItem('linko_access');
     localStorage.removeItem('linko_refresh');
+    localStorage.removeItem('linko_user');
   },
 };
 
@@ -45,6 +46,9 @@ async function doRefresh(): Promise<string> {
   });
   if (!raw.ok) {
     tokens.clear();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
     throw new Error('Session expired');
   }
   const data: AuthResponse = await raw.json();
@@ -95,7 +99,7 @@ async function request<T>(
 
   const body = await res.json();
   if (!res.ok) {
-    const err = new Error(body.message ?? 'Errore sconosciuto') as Error & {
+    const err = new Error(body.error ?? body.message ?? 'Errore sconosciuto') as Error & {
       status: number;
     };
     err.status = res.status;

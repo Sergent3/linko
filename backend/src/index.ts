@@ -18,6 +18,14 @@ app.use(cors({ origin: config.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// ── Request Logger ────────────────────────────────────────────────────────────
+app.use((req, _res, next) => {
+  if (req.path !== '/health') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
+  next();
+});
+
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'linko-backend', ts: new Date().toISOString() });
