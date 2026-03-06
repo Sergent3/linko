@@ -45,7 +45,8 @@ export default function BookmarkletTools() {
       `function onMsg(e){` +
         `if(e.origin!==o)return;` +
         `window.removeEventListener('message',onMsg);` +
-        `toast(e.data.ok?'✅ Salvato in Linko!':'❌ '+(e.data.error||'Errore — sei loggato?'),!!e.data.ok);` +
+        `var msg=e.data.ok?(e.data.exists?'⭐ Già in Linko':'✅ Salvato in Linko!'):'❌ '+(e.data.error||'Errore — sei loggato?');` +
+        `toast(msg,!!e.data.ok);` +
       `}` +
       `window.addEventListener('message',onMsg);` +
       // Apri popup invisibile

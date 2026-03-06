@@ -29,9 +29,14 @@ export default function SaveQuickPage() {
           body: JSON.stringify({ url, title: effectiveTitle }),
         });
 
+        if (res.status === 409) {
+          window.opener?.postMessage({ ok: true, exists: true }, window.location.origin);
+          return;
+        }
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        window.opener?.postMessage({ ok: true }, window.location.origin);
+        window.opener?.postMessage({ ok: true, exists: false }, window.location.origin);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Errore';
         window.opener?.postMessage({ ok: false, error: msg }, window.location.origin);
