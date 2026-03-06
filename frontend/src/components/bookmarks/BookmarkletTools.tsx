@@ -23,13 +23,39 @@ export default function BookmarkletTools() {
     const origin = window.location.origin;
     // Il codice è compresso manualmente (senza bundler) perché viene eseguito
     // nel contesto del browser dell'utente, non del nostro progetto.
+    // Bookmarklet: apre popup invisibile 1×1 che salva via API e comunica
+    // il risultato via postMessage → toast sulla pagina corrente.
+    // Fallback: se il popup è bloccato, naviga alla pagina bookmarks.
     const code =
       `javascript:(function(){` +
-      `var u=encodeURIComponent(window.location.href);` +
-      `var t=encodeURIComponent(document.title);` +
-      `var target='${origin}/bookmarks?add_url='+u+'&add_title='+t;` +
-      `var w=window.open(target,'Linko','width=520,height=660,status=no,toolbar=no,menubar=no,location=no,scrollbars=yes');` +
-      `if(!w||w.closed||typeof w.closed==='undefined'){window.location.href=target;}` +
+      `var u=encodeURIComponent(location.href);` +
+      `var tt=encodeURIComponent(document.title);` +
+      `var o='${origin}';` +
+      // Toast helper
+      `function toast(msg,ok){` +
+        `var n=document.createElement('div');` +
+        `n.textContent=msg;` +
+        `n.style.cssText='position:fixed;top:20px;right:20px;z-index:2147483647;background:'+(ok?'#1b4332':'#4a1515')+';color:'+(ok?'#d1fae5':'#fecaca')+';padding:12px 20px;border-radius:8px;font-size:14px;font-family:sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.5);transition:opacity .4s;';` +
+        `document.body.appendChild(n);` +
+        `setTimeout(function(){n.style.opacity='0';setTimeout(function(){n.parentNode&&n.parentNode.removeChild(n);},400);},2600);` +
+      `}` +
+      // Ascolta risposta dal popup
+      `function onMsg(e){` +
+        `if(e.origin!==o)return;` +
+        `window.removeEventListener('message',onMsg);` +
+        `toast(e.data.ok?'✅ Salvato in Linko!':'❌ '+(e.data.error||'Errore — sei loggato?'),!!e.data.ok);` +
+      `}` +
+      `window.addEventListener('message',onMsg);` +
+      // Apri popup invisibile
+      `var w=window.open(o+'/save-quick?url='+u+'&title='+tt,'_blank','width=1,height=1,left=-200,top=-200');` +
+      // Fallback se popup bloccato
+      `if(!w||w.closed||typeof w.closed==='undefined'){` +
+        `window.removeEventListener('message',onMsg);` +
+        `window.location.href=o+'/bookmarks?add_url='+u+'&add_title='+tt;` +
+      `}else{` +
+        // Timeout di sicurezza: pulisce il listener dopo 15 s
+        `setTimeout(function(){window.removeEventListener('message',onMsg);},15000);` +
+      `}` +
       `})();`;
     setBookmarkletHref(code);
   }, []);
@@ -50,7 +76,8 @@ export default function BookmarkletTools() {
         {/* Descrizione */}
         <p style={{ fontSize: 12, color: '#999', marginBottom: 12, lineHeight: 1.55 }}>
           Un bookmarklet è un piccolo programma salvato come segnalibro nel browser.
-          Cliccandolo su qualsiasi pagina web la salverai direttamente in Linko.
+          Cliccandolo su qualsiasi pagina la salva direttamente in Linko — nessuna
+          finestra aperta, compare solo un toast di conferma per 3 secondi.
         </p>
 
         {/* ── Desktop: drag area ─────────────────────────────────────── */}
