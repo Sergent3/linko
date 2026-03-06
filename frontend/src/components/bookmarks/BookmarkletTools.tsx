@@ -45,12 +45,13 @@ export default function BookmarkletTools() {
       `function onMsg(e){` +
         `if(e.origin!==o)return;` +
         `window.removeEventListener('message',onMsg);` +
-        `var msg=e.data.ok?(e.data.exists?'⭐ Già in Linko':'✅ Salvato in Linko!'):'❌ '+(e.data.error||'Errore — sei loggato?');` +
+        `var msg=e.data.ok?(e.data.detail==='exists'?'⭐ Già in Linko':'✅ Salvato in Linko!'):'❌ '+(e.data.detail||'Errore — sei loggato?');` +
         `toast(msg,!!e.data.ok);` +
       `}` +
       `window.addEventListener('message',onMsg);` +
-      // Apri popup invisibile
-      `var w=window.open(o+'/save-quick?url='+u+'&title='+tt,'_blank','width=1,height=1,left=-200,top=-200');` +
+      // Apri popup con selettore cartella
+      `var sw=screen.width,sh=screen.height,pw=340,ph=230;` +
+      `var w=window.open(o+'/save-quick?url='+u+'&title='+tt,'_blank','width='+pw+',height='+ph+',left='+(sw/2-pw/2)+',top='+(sh/2-ph/2)+',toolbar=no,menubar=no,location=no,status=no');` +
       // Fallback se popup bloccato
       `if(!w||w.closed||typeof w.closed==='undefined'){` +
         `window.removeEventListener('message',onMsg);` +
