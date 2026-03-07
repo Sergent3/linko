@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linko Sync</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 300px;
+      min-height: 200px;
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 13px;
+      background: #1e1e1e;
+      color: #ddd;
+      padding: 0;
+    }
+
+    header {
+      background: #2a2a2a;
+      border-bottom: 1px solid #333;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header span.logo { font-size: 18px; }
+    header strong { font-size: 13px; letter-spacing: .3px; color: #eee; }
+    header .version { margin-left: auto; font-size: 10px; color: #555; }
+
+    main { padding: 14px 16px; }
+
+    /* ── Form login ── */
+    .field { margin-bottom: 10px; }
+    .field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #666; margin-bottom: 4px; }
+    .field input {
+      width: 100%;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #ddd;
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+    }
+    .field input:focus { border-color: #3a7bd5; }
+
+    /* ── Buttons ── */
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 0;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: #3a7bd5; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #2f68bb; }
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid #444;
+      color: #888;
+      margin-top: 8px;
+      font-weight: 400;
+      font-size: 12px;
+    }
+    .btn-ghost:hover:not(:disabled) { border-color: #666; color: #aaa; }
+
+    /* ── Status ── */
+    .status {
+      margin-top: 12px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+    .status.error   { background: #2a1212; border: 1px solid #5a2020; color: #fca5a5; display: block; }
+    .status.success { background: #122a1a; border: 1px solid #1a5a2a; color: #6ee7b7; display: block; }
+    .status.info    { background: #1a1a2a; border: 1px solid #2a2a5a; color: #93c5fd; display: block; }
+
+    /* ── Pannello sincronizzazione ── */
+    .sync-info { margin-bottom: 14px; }
+    .sync-info .label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: #555; margin-bottom: 2px; }
+    .sync-info .value { font-size: 12px; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .result-cell {
+      background: #2a2a2a;
+      border-radius: 4px;
+      padding: 8px 4px;
+      text-align: center;
+    }
+    .result-cell .num { font-size: 20px; font-weight: 700; color: #eee; }
+    .result-cell .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #555; margin-top: 2px; }
+    .result-cell.imported .num { color: #6ee7b7; }
+    .result-cell.duplicate .num { color: #fbbf24; }
+    .result-cell.error .num { color: #fca5a5; }
+
+    .divider { border: none; border-top: 1px solid #333; margin: 12px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">⭐</span>
+  <strong>Linko Sync</strong>
+  <span class="version">v1.0</span>
+</header>
+
+<main>
+  <!-- Pannello login -->
+  <div id="panel-login">
+    <div class="field">
+      <label>URL Linko API</label>
+      <input id="api-url" type="url" placeholder="http://localhost:3001" value="http://localhost:3001">
+    </div>
+    <div class="field">
+      <label>Email</label>
+      <input id="email" type="email" placeholder="utente@esempio.com" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <button class="btn btn-primary" id="btn-login">Accedi</button>
+    <div class="status" id="login-status"></div>
+  </div>
+
+  <!-- Pannello sincronizzazione (visibile dopo il login) -->
+  <div id="panel-sync" style="display:none">
+    <div class="sync-info">
+      <div class="label">Connesso a</div>
+      <div class="value" id="info-api-url"></div>
+    </div>
+
+    <button class="btn btn-primary" id="btn-sync">
+      Sincronizza tutti i segnalibri
+    </button>
+
+    <div class="status" id="sync-status"></div>
+
+    <div id="result-grid" class="result-grid" style="display:none">
+      <div class="result-cell imported">
+        <div class="num" id="res-imported">0</div>
+        <div class="lbl">Importati</div>
+      </div>
+      <div class="result-cell duplicate">
+        <div class="num" id="res-duplicates">0</div>
+        <div class="lbl">Duplicati</div>
+      </div>
+      <div class="result-cell error">
+        <div class="num" id="res-errors">0</div>
+        <div class="lbl">Errori</div>
+      </div>
+    </div>
+
+    <hr class="divider">
+    <button class="btn btn-ghost" id="btn-logout">Disconnetti</button>
+  </div>
+</main>
+
+<script src="popup.js"></script>
+</body>
+</html>
