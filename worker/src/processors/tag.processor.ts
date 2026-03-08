@@ -87,12 +87,14 @@ Esempio: {"tags":["privacy","tor","darkweb"],"folderId":"cuid123"}`;
   const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 256,
     messages: [{ role: 'user', content: prompt }],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+  const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+  // Rimuove eventuali backtick markdown (```json ... ```)
+  const text = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
   let parsed: { tags?: unknown; folderId?: unknown };
   try {

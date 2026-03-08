@@ -47,7 +47,7 @@ export default function BookmarksDashboardPage() {
     setLoading(true);
     try {
       const [bRes, fList] = await Promise.all([
-        bookmarksApi.list({ page: 1, limit: 500 }),
+        bookmarksApi.list({ page: 1, limit: 2000 }),
         foldersApi.list(),
       ]);
       setAllBookmarks(bRes.data ?? []);
@@ -68,6 +68,70 @@ export default function BookmarksDashboardPage() {
       setAllBookmarks((prev) => prev.filter((b) => b.id !== id));
     } catch { /* ignore */ }
   }, []);
+
+  const handleRename = useCallback(async (folderId: string, newName: string) => {
+    try {
+      await foldersApi.update(folderId, newName);
+      setFolderList((prev) => prev.map((f) => f.id === folderId ? { ...f, name: newName } : f));
+    } catch (err) {
+      console.error('Errore rinomina cartella:', err);
+    }
+  }, []);
+
+  const handleCreateFolder = useCallback(async () => {
+    const name = prompt('Nome della nuova cartella:')?.trim();
+    if (!name) return;
+    try {
+      const folder = await foldersApi.create(name);
+      setFolderList((prev) => [...prev, folder]);
+    } catch (err) {
+      console.error('Errore creazione cartella:', err);
+    }
+  }, []);
+
+  const handleMoveBookmark = useCallback(async (bookmarkId: string, targetFolderId: string | null) => {
+    try {
+      await bookmarksApi.update(bookmarkId, { folderId: targetFolderId ?? undefined });
+      setAllBookmarks((prev) =>
+        prev.map((b) => b.id === bookmarkId ? { ...b, folderId: targetFolderId ?? undefined } : b)
+      );
+    } catch (err) {
+      console.error('Errore spostamento bookmark:', err);
+    }
+  }, []);
+
+  const handleClearUncategorized = useCallback(async () => {
+    try {
+      const ids = allBookmarks.filter((b) => !b.folderId).map((b) => b.id);
+      await Promise.all(ids.map((id) => bookmarksApi.delete(id)));
+      setAllBookmarks((prev) => prev.filter((b) => !!b.folderId));
+    } catch (err) {
+      console.error('Errore eliminazione senza categoria:', err);
+      alert('Errore durante l\'eliminazione. Riprova.');
+    }
+  }, [allBookmarks]);
+
+  const handleFolderDelete = useCallback(async (folderId: string) => {
+    try {
+      await foldersApi.delete(folderId);
+      // Raccoglie gli id di tutte le cartelle eliminate (la cartella + eventuali figli già in lista)
+      setFolderList((prev) => {
+        const deleted = new Set<string>();
+        const collect = (id: string) => {
+          deleted.add(id);
+          prev.filter((f) => f.parentId === id).forEach((f) => collect(f.id));
+        };
+        collect(folderId);
+        // Elimina i bookmark delle cartelle rimosse
+        setAllBookmarks((bms) => bms.filter((b) => !deleted.has(b.folderId ?? '')));
+        if (deleted.has(activeFolder ?? '')) setActiveFolder(null);
+        return prev.filter((f) => !deleted.has(f.id));
+      });
+    } catch (err) {
+      console.error('Errore eliminazione cartella:', err);
+      alert('Impossibile eliminare la cartella. Riprova.');
+    }
+  }, [activeFolder]);
 
   const handleCreated = useCallback((bm: Bookmark) => {
     setAllBookmarks((prev) => [bm, ...prev]);
@@ -156,8 +220,16 @@ export default function BookmarksDashboardPage() {
 
         <button
           className="btn-add"
+          onClick={handleCreateFolder}
+          style={{ marginLeft: 12, flexShrink: 0, background: '#444' }}
+        >
+          <Plus size={13} />
+          Cartella
+        </button>
+        <button
+          className="btn-add"
           onClick={openAddModal}
-          style={{ marginLeft: 12, flexShrink: 0 }}
+          style={{ marginLeft: 6, flexShrink: 0 }}
         >
           <Plus size={13} />
           Aggiungi
@@ -183,9 +255,14 @@ export default function BookmarksDashboardPage() {
             <BookmarkWidget
               key={folder?.id ?? 'uncategorized'}
               title={folder?.name ?? 'Senza categoria'}
+              folderId={folder?.id}
               bookmarks={items}
               onDelete={handleDelete}
               onAddClick={openAddModal}
+              onFolderDelete={folder ? handleFolderDelete : undefined}
+              onClearAll={!folder ? handleClearUncategorized : undefined}
+              onMoveBookmark={handleMoveBookmark}
+              onRename={handleRename}
             />
           ))}
           {visible.length === 0 && (

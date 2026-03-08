@@ -6,11 +6,12 @@ Piattaforma web per salvare e organizzare segnalibri del browser con tagging aut
 
 | Layer | Tecnologia |
 |-------|-----------|
-| Frontend | Next.js 14 (App Router) |
+| Frontend | Next.js 15 (App Router) |
 | Backend | Express + TypeScript |
 | ORM | Prisma 5 + PostgreSQL 16 |
 | Queue | BullMQ + Redis 7 |
 | Auth | JWT (access 15 min + refresh 7 giorni) |
+| AI | Claude API (claude-haiku) via Anthropic SDK |
 | Infra | Docker Compose |
 
 ## Architettura
@@ -30,13 +31,33 @@ Piattaforma web per salvare e organizzare segnalibri del browser con tagging aut
 
 ## Funzionalità
 
-- **Import** segnalibri da file HTML (formato Netscape — Chrome/Firefox/Safari)
-- **Tagging ibrido**: regex su dominio (gratuito) + AI placeholder (Claude API)
-- **Arricchimento asincrono**: titolo, favicon, immagine OpenGraph, HTTP status
-- **De-duplicazione** via SHA-256 dell'URL normalizzato
+### Bookmarks
+- **Salvataggio** con de-duplicazione via SHA-256 dell'URL normalizzato
 - **Soft delete** — i record rimangono nel DB con `deletedAt`
-- **Auth JWT**: register, login, refresh token con rotation, logout
-- **Worker scalabile**: `docker compose up --scale worker=N`
+- **Arricchimento asincrono**: titolo, favicon, immagine OpenGraph, HTTP status
+- **Drag & drop** tra cartelle direttamente nell'interfaccia
+
+### Organizzazione
+- **Cartelle**: crea, rinomina (doppio click), elimina con tutti i bookmark
+- **Tag ibridi**: regex su dominio (gratuito, istantaneo) + AI via Claude API
+- **Tagging AI** (claude-haiku): 3-6 tag per bookmark + suggerimento cartella
+
+### Import & Sync
+- **Import HTML**: file Netscape Bookmark (Chrome / Firefox / Safari / Edge)
+- **Sync da browser**: endpoint `POST /api/v1/import/sync` per albero JSON
+- **Chrome Extension** inclusa (`extension/`) — installa in modalità sviluppatore
+
+### Siti .onion (Tor)
+- Arricchimento via proxy SOCKS5 se Tor è installato (`127.0.0.1:9050`)
+- Tagging AI basato su titolo/descrizione se il sito non è raggiungibile
+
+### Bookmarklet
+- Salvataggio rapido dalla pagina corrente con popup minimale
+- Onboarding "prima volta": se l'utente non ha bookmark, propone import massivo
+
+### Auth
+- Register, login, refresh token con rotation, logout
+- JWT: access token 15 min + refresh token 7 giorni (SHA-256 in DB)
 
 ## Setup locale
 
@@ -44,14 +65,19 @@ Piattaforma web per salvare e organizzare segnalibri del browser con tagging aut
 
 - Docker + Docker Compose
 - Node.js 20+ (per migrate e `prisma generate` sull'host)
+- (Opzionale) Chiave API Anthropic per il tagging AI
 
 ### 1. Variabili d'ambiente
 
 ```bash
 cp .env.example .env
-# Edita .env: cambia password, genera JWT secrets con:
+# Edita .env:
+#   - Cambia le password
+#   - Genera JWT secrets:
 openssl rand -hex 32  # JWT_SECRET
 openssl rand -hex 32  # JWT_REFRESH_SECRET
+#   - Aggiungi chiave Anthropic (opzionale):
+#   ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ### 2. Avvio infrastruttura
@@ -63,15 +89,14 @@ docker compose up -d postgres redis
 ### 3. Migrate e genera client Prisma
 
 ```bash
-# Dal repo root — adatta DATABASE_URL se cambi la password nel .env
 cd backend
 DATABASE_URL="postgresql://linko:changeme_strong_password@localhost:5433/linkodb" \
   npx prisma migrate dev --name init
 
-npx prisma generate   # genera client backend
+npx prisma generate   # client backend
 
 cd ../worker
-npx prisma generate   # genera client worker (schema condiviso)
+npx prisma generate   # client worker (schema condiviso)
 ```
 
 ### 4. Avvio completo
@@ -86,7 +111,6 @@ docker compose up -d --scale worker=2
 curl http://localhost:3001/health
 # {"status":"ok","service":"linko-backend","ts":"..."}
 
-# Registra utente
 curl -X POST http://localhost:3001/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"password123"}'
@@ -107,14 +131,48 @@ curl -X POST http://localhost:3001/api/v1/auth/register \
 
 | Metodo | Endpoint | Descrizione |
 |--------|----------|-------------|
-| GET | `/api/v1/bookmarks` | Lista bookmark (paginata, filtrabile) |
+| GET | `/api/v1/bookmarks` | Lista bookmark (max 2000, filtrabile) |
 | POST | `/api/v1/bookmarks` | Crea bookmark |
-| PATCH | `/api/v1/bookmarks/:id` | Aggiorna bookmark |
+| PATCH | `/api/v1/bookmarks/:id` | Aggiorna bookmark (titolo, folderId, tag) |
 | DELETE | `/api/v1/bookmarks/:id` | Soft delete |
 | GET | `/api/v1/folders` | Lista cartelle |
 | POST | `/api/v1/folders` | Crea cartella |
+| PATCH | `/api/v1/folders/:id` | Rinomina cartella |
+| DELETE | `/api/v1/folders/:id` | Elimina cartella + bookmark (ricorsivo) |
 | GET | `/api/v1/tags` | Lista tag |
 | POST | `/api/v1/import` | Import file HTML (multipart) |
+| POST | `/api/v1/import/sync` | Import albero JSON da estensione browser |
+
+### Import sync — formato payload
+
+```json
+{
+  "tree": [
+    {
+      "title": "Barra dei preferiti",
+      "children": [
+        { "title": "GitHub", "url": "https://github.com" },
+        {
+          "title": "Dev",
+          "children": [
+            { "title": "MDN", "url": "https://developer.mozilla.org" }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Chrome Extension
+
+La cartella `extension/` contiene un'estensione Manifest V3 pronta all'uso.
+
+**Installazione:**
+1. `chrome://extensions` → Modalità sviluppatore → Carica estensione non pacchettizzata
+2. Seleziona la cartella `extension/`
+3. Inserisci URL API (es. `http://IP-VPS:3001`), email e password
+4. Clicca **Sincronizza tutti i segnalibri**
 
 ## Note per ambienti con AppArmor restrittivo
 
@@ -136,23 +194,38 @@ linko/
 │   │   └── migrations/
 │   └── src/
 │       ├── modules/
-│       │   ├── auth/          # register, login, refresh, logout
+│       │   ├── auth/
 │       │   ├── bookmarks/
 │       │   ├── folders/
 │       │   ├── tags/
-│       │   └── import/        # parser HTML Netscape
+│       │   └── import/
+│       │       ├── parser.ts        # parser HTML Netscape
+│       │       ├── import.service.ts
+│       │       ├── sync.service.ts  # import da estensione browser
+│       │       └── import.router.ts
 │       ├── middleware/
-│       │   ├── auth.middleware.ts
-│       │   └── error.middleware.ts
 │       └── utils/
-│           ├── tag-engine.ts  # regex + AI placeholder
-│           └── url-hash.ts    # normalizzazione + SHA-256
+│           ├── tag-engine.ts        # regex domini + placeholder AI
+│           └── url-hash.ts          # normalizzazione + SHA-256
 ├── worker/
 │   └── src/processors/
-│       ├── enrich.processor.ts    # OpenGraph scraping
+│       ├── enrich.processor.ts      # OpenGraph scraping (+ Tor per .onion)
 │       ├── health-check.processor.ts
-│       └── tag.processor.ts       # AI tagging placeholder
-├── frontend/                  # Next.js (in sviluppo)
+│       └── tag.processor.ts         # AI tagging via Claude API
+├── frontend/
+│   └── src/
+│       ├── app/(app)/bookmarks/     # pagina principale
+│       ├── app/save-quick/          # popup bookmarklet
+│       └── components/bookmarks/
+│           ├── BookmarkWidget.tsx   # widget cartella (drag&drop, rinomina, elimina)
+│           └── BookmarkListItem.tsx # riga bookmark (draggabile)
+├── extension/                       # Chrome Extension Manifest V3
+│   ├── manifest.json
+│   ├── background.js
+│   ├── popup.html
+│   └── popup.js
+├── scripts/
+│   └── retag-all.ts                 # ri-dispatcha job tagging AI su bookmark esistenti
 ├── docker-compose.yml
 └── .env.example
 ```

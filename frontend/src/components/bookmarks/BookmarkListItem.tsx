@@ -20,12 +20,19 @@ export default function BookmarkListItem({ bookmark, onDelete }: Props) {
     ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
     : '';
 
+  function handleDragStart(e: React.DragEvent) {
+    e.dataTransfer.setData('bookmarkId', bookmark.id);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
   return (
     <a
       href={bookmark.url}
       target="_blank"
       rel="noopener noreferrer"
       className="bookmark-item group"
+      draggable
+      onDragStart={handleDragStart}
     >
       {!imgFailed && faviconUrl ? (
         <img
