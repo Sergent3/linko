@@ -9,9 +9,21 @@ import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
 import { useSearch } from '@/contexts/SearchContext';
 import type { Bookmark, Folder } from '@/types/api';
 
+const STORAGE_KEY = 'linko_folder_order';
+
+function loadOrder(): string[] {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]') ?? []; }
+  catch { return []; }
+}
+
+function saveOrder(ids: string[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+}
+
 export default function BookmarksDashboardPage() {
   const [allBookmarks, setAllBookmarks] = useState<Bookmark[]>([]);
   const [folderList, setFolderList] = useState<Folder[]>([]);
+  const [folderOrder, setFolderOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -52,6 +64,11 @@ export default function BookmarksDashboardPage() {
       ]);
       setAllBookmarks(bRes.data ?? []);
       setFolderList(fList ?? []);
+      // Inizializza l'ordine: saved order prima, poi eventuali nuove cartelle in coda
+      const saved = loadOrder();
+      const allIds = (fList ?? []).map((f: Folder) => f.id);
+      const merged = [...saved.filter((id) => allIds.includes(id)), ...allIds.filter((id) => !saved.includes(id))];
+      setFolderOrder(merged);
     } catch {
       // ignore
     } finally {
@@ -69,6 +86,17 @@ export default function BookmarksDashboardPage() {
     } catch { /* ignore */ }
   }, []);
 
+  const handleWidgetReorder = useCallback((draggedId: string, targetId: string, position: 'before' | 'after') => {
+    setFolderOrder((prev) => {
+      const order = prev.filter((id) => id !== draggedId);
+      const idx = order.indexOf(targetId);
+      const insertAt = position === 'before' ? idx : idx + 1;
+      order.splice(insertAt < 0 ? order.length : insertAt, 0, draggedId);
+      saveOrder(order);
+      return [...order];
+    });
+  }, []);
+
   const handleRename = useCallback(async (folderId: string, newName: string) => {
     try {
       await foldersApi.update(folderId, newName);
@@ -84,6 +112,7 @@ export default function BookmarksDashboardPage() {
     try {
       const folder = await foldersApi.create(name);
       setFolderList((prev) => [...prev, folder]);
+      setFolderOrder((prev) => { const o = [...prev, folder.id]; saveOrder(o); return o; });
     } catch (err) {
       console.error('Errore creazione cartella:', err);
     }
@@ -125,7 +154,9 @@ export default function BookmarksDashboardPage() {
         // Elimina i bookmark delle cartelle rimosse
         setAllBookmarks((bms) => bms.filter((b) => !deleted.has(b.folderId ?? '')));
         if (deleted.has(activeFolder ?? '')) setActiveFolder(null);
-        return prev.filter((f) => !deleted.has(f.id));
+        const next = prev.filter((f) => !deleted.has(f.id));
+        setFolderOrder((o) => { const no = o.filter((id) => !deleted.has(id)); saveOrder(no); return no; });
+        return next;
       });
     } catch (err) {
       console.error('Errore eliminazione cartella:', err);
@@ -162,13 +193,19 @@ export default function BookmarksDashboardPage() {
       )
     : allBookmarks;
 
+  // Ordina le cartelle secondo folderOrder (drag&drop), le nuove vanno in coda
+  const orderedFolders = [
+    ...folderOrder.map((id) => folderList.find((f) => f.id === id)).filter(Boolean) as Folder[],
+    ...folderList.filter((f) => !folderOrder.includes(f.id)),
+  ];
+
   const grouped: { folder: Folder | null; items: Bookmark[] }[] = [];
 
   const noFolder = filtered.filter((b) => !b.folderId);
   if (noFolder.length > 0 || folderList.length === 0) {
     grouped.push({ folder: null, items: noFolder });
   }
-  folderList.forEach((f) => {
+  orderedFolders.forEach((f) => {
     const items = filtered.filter((b) => b.folderId === f.id);
     grouped.push({ folder: f, items });
   });
@@ -263,6 +300,7 @@ export default function BookmarksDashboardPage() {
               onClearAll={!folder ? handleClearUncategorized : undefined}
               onMoveBookmark={handleMoveBookmark}
               onRename={handleRename}
+              onWidgetReorder={handleWidgetReorder}
             />
           ))}
           {visible.length === 0 && (
