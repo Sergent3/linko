@@ -115,7 +115,7 @@ export async function createBookmark(dto: CreateBookmarkDto, userId: string) {
 }
 
 export async function listBookmarks(dto: ListBookmarksDto, userId: string) {
-  const { page, limit, folderId, tagId, search, enrichStatus } = dto;
+  const { page, limit, folderId, tagId, search, enrichStatus, isRead } = dto;
   const skip = (page - 1) * limit;
 
   const where = {
@@ -123,6 +123,7 @@ export async function listBookmarks(dto: ListBookmarksDto, userId: string) {
     deletedAt: null,
     ...(folderId && { folderId }),
     ...(enrichStatus && { enrichStatus }),
+    ...(isRead !== undefined && { isRead }),
     ...(tagId && { tags: { some: { tagId } } }),
     ...(search && {
       OR: [
@@ -172,6 +173,7 @@ export async function updateBookmark(id: string, dto: UpdateBookmarkDto, userId:
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.folderId !== undefined && { folderId: dto.folderId }),
+        ...(dto.isRead !== undefined && { isRead: dto.isRead }),
       },
     });
 

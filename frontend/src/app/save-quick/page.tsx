@@ -16,6 +16,7 @@ export default function SaveQuickPage() {
     : new URLSearchParams();
   const url   = params.get('url')   ?? '';
   const title = params.get('title') ?? '';
+  const description = params.get('description') ?? '';
 
   /* ── Carica cartelle + controlla se è il primo utilizzo ── */
   useEffect(() => {
@@ -55,7 +56,7 @@ export default function SaveQuickPage() {
       const res = await fetch('/api/v1/bookmarks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url, title: effectiveTitle, ...(folderId ? { folderId } : {}) }),
+        body: JSON.stringify({ url, title: effectiveTitle, description: description.trim() || undefined, ...(folderId ? { folderId } : {}) }),
       });
 
       if (res.status === 409) { notify(true, 'exists'); return; }

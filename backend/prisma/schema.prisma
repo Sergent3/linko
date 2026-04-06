@@ -92,6 +92,9 @@ model Bookmark {
   // Soft delete: il record rimane nel DB ma è nascosto all'utente
   deletedAt DateTime?
 
+  // Read later / Inbox triage
+  isRead Boolean @default(false)
+
   // Stato pipeline di arricchimento asincrona
   enrichStatus EnrichStatus @default(PENDING)
   enrichedAt   DateTime?

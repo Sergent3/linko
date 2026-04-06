@@ -13,6 +13,7 @@ export const updateBookmarkSchema = z.object({
   description: z.string().max(2_000).nullable().optional(),
   folderId: z.string().cuid().nullable().optional(),
   tags: z.array(z.string().min(1).max(100)).optional(),
+  isRead: z.boolean().optional(),
 });
 
 export const listBookmarksSchema = z.object({
@@ -22,6 +23,7 @@ export const listBookmarksSchema = z.object({
   tagId: z.string().cuid().optional(),
   search: z.string().max(200).optional(),
   enrichStatus: z.enum(['PENDING', 'PROCESSING', 'DONE', 'FAILED']).optional(),
+  isRead: z.coerce.boolean().optional(),
 });
 
 export type CreateBookmarkDto = z.infer<typeof createBookmarkSchema>;

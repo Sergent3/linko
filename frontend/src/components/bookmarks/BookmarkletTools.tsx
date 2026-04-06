@@ -32,6 +32,7 @@ export default function BookmarkletTools() {
       `javascript:(function(){` +
       `var u=encodeURIComponent(location.href);` +
       `var tt=encodeURIComponent(document.title);` +
+      `var d=encodeURIComponent(window.getSelection().toString());` +
       `var o='${origin}';` +
       // Toast helper
       `function toast(msg,ok){` +
@@ -51,11 +52,11 @@ export default function BookmarkletTools() {
       `window.addEventListener('message',onMsg);` +
       // Apri popup con selettore cartella
       `var sw=screen.width,sh=screen.height,pw=340,ph=230;` +
-      `var w=window.open(o+'/save-quick?url='+u+'&title='+tt,'_blank','width='+pw+',height='+ph+',left='+(sw/2-pw/2)+',top='+(sh/2-ph/2)+',toolbar=no,menubar=no,location=no,status=no');` +
+      `var w=window.open(o+'/save-quick?url='+u+'&title='+tt+'&description='+d,'_blank','width='+pw+',height='+ph+',left='+(sw/2-pw/2)+',top='+(sh/2-ph/2)+',toolbar=no,menubar=no,location=no,status=no');` +
       // Fallback se popup bloccato
       `if(!w||w.closed||typeof w.closed==='undefined'){` +
         `window.removeEventListener('message',onMsg);` +
-        `window.location.href=o+'/bookmarks?add_url='+u+'&add_title='+tt;` +
+        `window.location.href=o+'/bookmarks?add_url='+u+'&add_title='+tt+'&add_description='+d;` +
       `}else{` +
         // Timeout di sicurezza: pulisce il listener dopo 15 s
         `setTimeout(function(){window.removeEventListener('message',onMsg);},15000);` +
