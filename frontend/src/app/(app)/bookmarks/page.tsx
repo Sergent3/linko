@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Command, Inbox, Archive } from 'lucide-react';
 import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
+import CommandPalette from '@/components/CommandPalette';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
 import BookmarkletTools from '@/components/bookmarks/BookmarkletTools';
 import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
@@ -27,6 +28,7 @@ export default function BookmarksDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'inbox' | 'archive'>('inbox');
 
   // Valori pre-compilati dal bookmarklet (intercettati dai query params)
   const [bookmarkletUrl, setBookmarkletUrl] = useState('');
@@ -122,7 +124,7 @@ export default function BookmarksDashboardPage() {
     try {
       await bookmarksApi.update(bookmarkId, { folderId: targetFolderId ?? undefined });
       setAllBookmarks((prev) =>
-        prev.map((b) => b.id === bookmarkId ? { ...b, folderId: targetFolderId ?? undefined } : b)
+        prev.map((b) => b.id === bookmarkId ? { ...b, folderId: targetFolderId ?? null } : b)
       );
     } catch (err) {
       console.error('Errore spostamento bookmark:', err);
@@ -201,12 +203,15 @@ export default function BookmarksDashboardPage() {
 
   const grouped: { folder: Folder | null; items: Bookmark[] }[] = [];
 
-  const noFolder = filtered.filter((b) => !b.folderId);
+  // Filtro Inbox vs Archive
+  const readFiltered = filtered.filter((b) => viewMode === 'inbox' ? !b.isRead : b.isRead);
+
+  const noFolder = readFiltered.filter((b) => !b.folderId);
   if (noFolder.length > 0 || folderList.length === 0) {
     grouped.push({ folder: null, items: noFolder });
   }
   orderedFolders.forEach((f) => {
-    const items = filtered.filter((b) => b.folderId === f.id);
+    const items = readFiltered.filter((b) => b.folderId === f.id);
     grouped.push({ folder: f, items });
   });
 
@@ -228,6 +233,16 @@ export default function BookmarksDashboardPage() {
       {/* ── Top header ─────────────────────────────────────────────────────── */}
       <div className="top-header">
         <span className="page-title">Bookmarks</span>
+
+        {/* Tab Inbox / Archivio */}
+        <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '4px', borderRadius: '8px', marginLeft: 16 }}>
+          <button className={`folder-tab ${viewMode === 'inbox' ? 'active' : ''}`} onClick={() => setViewMode('inbox')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', margin: 0 }}>
+            <Inbox size={14} /> Da leggere
+          </button>
+          <button className={`folder-tab ${viewMode === 'archive' ? 'active' : ''}`} onClick={() => setViewMode('archive')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', margin: 0 }}>
+            <Archive size={14} /> Archivio
+          </button>
+        </div>
 
         {/* Folder tabs */}
         <div
@@ -324,6 +339,8 @@ export default function BookmarksDashboardPage() {
           initialTitle={bookmarkletTitle}
         />
       )}
+      {/* ── Command Palette ────────────────────────────────────────────────── */}
+      <CommandPalette bookmarks={allBookmarks} folders={folderList} />
     </div>
   );
 }

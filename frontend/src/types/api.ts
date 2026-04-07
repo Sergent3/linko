@@ -41,6 +41,8 @@ export interface Bookmark {
   folder?: Folder | null;
   deletedAt: string | null;
   createdAt: string;
+  isRead: boolean;
+  contentMarkdown?: string | null;
   tags: Array<{ tag: Tag; source: TagSource }>;
 }
 

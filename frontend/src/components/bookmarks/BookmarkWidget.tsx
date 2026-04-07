@@ -24,6 +24,7 @@ export default function BookmarkWidget({
   const [confirming, setConfirming]   = useState(false);
   const [editing, setEditing]         = useState(false);
   const [editValue, setEditValue]     = useState(title);
+  const [collapsed, setCollapsed]     = useState(true);
   // bookmark drag-over
   const [bmDragOver, setBmDragOver]   = useState(false);
   // widget drag-over: 'before' | 'after' | null
@@ -141,6 +142,11 @@ export default function BookmarkWidget({
           </span>
         )}
 
+        {/* Toggle chevron */}
+        <button onClick={() => setCollapsed(!collapsed)} title={collapsed ? "Espandi" : "Riduci"} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'transform 0.2s', transform: collapsed ? 'rotate(-90deg)' : 'none', marginRight: 4, flexShrink: 0, padding: 2 }}>
+          ▼
+        </button>
+
         {/* Titolo */}
         {editing ? (
           <input
@@ -186,15 +192,17 @@ export default function BookmarkWidget({
         </div>
       </div>
 
-      <div className="widget-card-body">
-        {bookmarks.length === 0 ? (
-          <div style={{ padding: '6px 10px', color: '#888', fontSize: '12px' }}>Nessun segnalibro</div>
-        ) : (
-          bookmarks.map((b) => (
-            <BookmarkListItem key={b.id} bookmark={b} onDelete={onDelete} />
-          ))
-        )}
-      </div>
+      {!collapsed && (
+        <div className="widget-card-body">
+          {bookmarks.length === 0 ? (
+            <div style={{ padding: '8px 14px', color: '#888', fontSize: '12px' }}>Nessun segnalibro</div>
+          ) : (
+            bookmarks.map((b) => (
+              <BookmarkListItem key={b.id} bookmark={b} onDelete={onDelete} />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

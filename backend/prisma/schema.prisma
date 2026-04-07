@@ -95,6 +95,9 @@ model Bookmark {
   // Read later / Inbox triage
   isRead Boolean @default(false)
 
+  // Archiviazione testo completo per evitare 'morte dei link'
+  contentMarkdown String? @db.Text
+
   // Stato pipeline di arricchimento asincrona
   enrichStatus EnrichStatus @default(PENDING)
   enrichedAt   DateTime?

@@ -2,28 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+:root {
+  --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+  --glass-bg: rgba(30, 41, 59, 0.4);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  --glass-hover: rgba(51, 65, 85, 0.6);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+}
+
 body {
-  background-color: #2b2b2b;
-  color: #e0e0e0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-main);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
+  min-height: 100vh;
 }
 
 a {
-  color: #e0e0e0;
+  color: var(--text-main);
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 a:hover {
-  color: #ffffff;
-  text-decoration: none;
+  color: var(--accent);
 }
 
 ::-webkit-scrollbar {
@@ -32,179 +48,189 @@ a:hover {
 }
 
 ::-webkit-scrollbar-track {
-  background: #222222;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #555555;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #777777;
+  background: rgba(255, 255, 255, 0.2);
 }
 
-/* start.me widget card */
+/* Glassmorphism widget card */
 .widget-card {
-  background-color: #3a3a3a;
-  border-radius: 4px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 12px;
   overflow: hidden;
   break-inside: avoid;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.widget-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
 }
 
 .widget-card-header {
-  background-color: #444444;
-  padding: 6px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #cccccc;
-  border-bottom: 1px solid #555555;
+  background: rgba(15, 23, 42, 0.6);
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .widget-card-body {
-  padding: 4px 0;
+  padding: 8px 0;
 }
 
 .bookmark-item {
   display: flex;
   align-items: center;
-  padding: 3px 10px;
+  padding: 8px 14px;
   cursor: pointer;
-  transition: background-color 0.1s;
+  transition: all 0.2s ease;
+  border-left: 2px solid transparent;
 }
 
 .bookmark-item:hover {
-  background-color: #4a4a4a;
+  background: var(--glass-hover);
+  border-left-color: var(--accent);
 }
 
 .bookmark-item img {
-  width: 16px;
-  height: 16px;
-  margin-right: 8px;
+  width: 18px;
+  height: 18px;
+  margin-right: 10px;
   flex-shrink: 0;
   object-fit: contain;
+  border-radius: 4px;
 }
 
 .bookmark-item span {
   font-size: 13px;
-  color: #dddddd;
+  font-weight: 500;
+  color: var(--text-main);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.bookmark-item:hover span {
-  color: #ffffff;
+  flex: 1;
 }
 
 /* top header */
 .top-header {
-  background-color: #1e1e1e;
-  border-bottom: 1px solid #111111;
-  padding: 0 16px;
-  height: 40px;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 0 24px;
+  height: 60px;
   display: flex;
   align-items: center;
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
 }
 
 /* main grid layout */
 .bookmarks-grid {
   columns: 4;
-  column-gap: 12px;
-  padding: 12px;
+  column-gap: 16px;
+  padding: 24px;
+  max-width: 1600px;
+  margin: 0 auto;
 }
 
-@media (max-width: 1400px) {
-  .bookmarks-grid { columns: 3; }
-}
-
-@media (max-width: 1000px) {
-  .bookmarks-grid { columns: 2; }
-}
-
-@media (max-width: 600px) {
-  .bookmarks-grid { columns: 1; }
-}
-
-/* delete button hover */
-.bookmark-item:hover .delete-btn {
-  opacity: 1 !important;
-}
-
-.delete-btn:hover {
-  color: #ff6b6b !important;
-}
+@media (max-width: 1400px) { .bookmarks-grid { columns: 3; } }
+@media (max-width: 1000px) { .bookmarks-grid { columns: 2; } }
+@media (max-width: 600px) { .bookmarks-grid { columns: 1; } }
 
 /* search bar */
 .search-bar {
-  background: #222222;
-  border: 1px solid #444444;
-  border-radius: 3px;
-  color: #e0e0e0;
-  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  color: var(--text-main);
+  padding: 8px 14px;
   font-size: 13px;
   outline: none;
-  width: 220px;
-}
-
-.search-bar::placeholder {
-  color: #666666;
+  width: 260px;
+  transition: all 0.2s ease;
 }
 
 .search-bar:focus {
-  border-color: #666666;
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
-/* folder tabs */
+/* folder tabs & top bar active states */
 .folder-tab {
   display: inline-block;
-  padding: 4px 14px;
-  font-size: 12px;
-  color: #aaaaaa;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: color 0.15s, border-color 0.15s;
+  border-radius: 8px;
+  transition: all 0.2s ease;
   white-space: nowrap;
+  margin-right: 4px;
 }
 
 .folder-tab:hover {
-  color: #e0e0e0;
+  color: var(--text-main);
+  background: rgba(255,255,255,0.05);
 }
 
 .folder-tab.active {
-  color: #ffffff;
-  border-bottom-color: #5b9bd5;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
 }
 
 /* add button */
 .btn-add {
-  background: #3a7bd5;
+  background: var(--accent);
   color: white;
   border: none;
-  border-radius: 3px;
-  padding: 5px 12px;
-  font-size: 12px;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 4px;
-  transition: background 0.15s;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .btn-add:hover {
-  background: #2d6bc4;
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
 }
 
 /* page title */
 .page-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #dddddd;
-  letter-spacing: 0.3px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.3px;
+  background: linear-gradient(to right, #fff, #94a3b8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }

@@ -21,6 +21,7 @@ import net from 'net';
 import { Job } from 'bullmq';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import TurndownService from 'turndown';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { prisma } from '../lib/prisma';
 import { config } from '../config';
@@ -147,12 +148,27 @@ export async function enrichProcessor(job: Job<EnrichJobData>): Promise<void> {
       onion,
     );
 
+    // Estrazione testo markdown completo
+    let contentMarkdown: string | undefined;
+    try {
+      // Rimuovi script e stili per una conversione pulita
+      $('script, style, noscript, iframe, nav, footer, header').remove();
+      const bodyHtml = $('body').html();
+      if (bodyHtml) {
+        const turndownService = new TurndownService({ headingStyle: 'atx' });
+        contentMarkdown = turndownService.turndown(bodyHtml);
+      }
+    } catch (e) {
+      console.warn(`[enrich] Errore estrazione testuale markdown per ${url}`, e);
+    }
+
     await prisma.bookmark.update({
       where: { id: bookmarkId },
       data: {
         ...(title && { title }),
         ...(description && { description }),
         ...(imageUrl && { imageUrl }),
+        ...(contentMarkdown && { contentMarkdown }),
         httpStatus: response.status,
         enrichStatus: 'DONE',
         enrichedAt: new Date(),
