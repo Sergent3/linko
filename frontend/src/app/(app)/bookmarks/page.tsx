@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Command, Inbox, Archive } from 'lucide-react';
+import { Plus, Command, Inbox, Archive, Download } from 'lucide-react';
 import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import CommandPalette from '@/components/CommandPalette';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
@@ -272,8 +272,17 @@ export default function BookmarksDashboardPage() {
 
         <button
           className="btn-add"
+          onClick={() => bookmarksApi.exportHtml()}
+          style={{ flexShrink: 0, background: '#444' }}
+          title="Esporta in HTML (Firefox/Chrome)"
+        >
+          <Download size={13} />
+        </button>
+
+        <button
+          className="btn-add"
           onClick={handleCreateFolder}
-          style={{ marginLeft: 12, flexShrink: 0, background: '#444' }}
+          style={{ marginLeft: 6, flexShrink: 0, background: '#444' }}
         >
           <Plus size={13} />
           Cartella

@@ -160,6 +160,22 @@ export const bookmarks = {
 
   delete: (id: string) =>
     request<void>(`/bookmarks/${id}`, { method: 'DELETE' }),
+
+  exportHtml: async () => {
+    const access = tokens.access;
+    const headers: Record<string, string> = access ? { 'Authorization': `Bearer ${access}` } : {};
+    const res = await fetch(`${BASE}/bookmarks/export/html`, { headers });
+    if (!res.ok) throw new Error('Errore durante export');
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'linko_bookmarks.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 // ── Folders ────────────────────────────────────────────────────────────────────
