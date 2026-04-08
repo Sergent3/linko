@@ -161,6 +161,15 @@ export const bookmarks = {
   delete: (id: string) =>
     request<void>(`/bookmarks/${id}`, { method: 'DELETE' }),
 
+  trash: () =>
+    request<Bookmark[]>('/bookmarks/trash'),
+
+  restore: (id: string) =>
+    request<Bookmark>(`/bookmarks/${id}/restore`, { method: 'PATCH' }),
+
+  emptyTrash: () =>
+    request<void>('/bookmarks/trash', { method: 'DELETE' }),
+
   exportHtml: async () => {
     const access = tokens.access;
     const headers: Record<string, string> = access ? { 'Authorization': `Bearer ${access}` } : {};

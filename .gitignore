@@ -20,6 +20,11 @@ yarn-error.log*
 *.db
 *.sqlite
 
+# Dati persistenti container (bind mounts)
+data/postgres/*
+data/redis/*
+!data/postgres/.gitkeep
+!data/redis/.gitkeep
 # IDE
 .vscode/
 .idea/

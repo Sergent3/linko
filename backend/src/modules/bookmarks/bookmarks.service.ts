@@ -198,3 +198,27 @@ export async function hardDeleteBookmark(id: string, userId: string) {
   await assertExists(id, userId);
   return prisma.bookmark.delete({ where: { id } });
 }
+
+/** Lista i bookmark nel cestino (deletedAt != null). */
+export async function listTrashedBookmarks(userId: string) {
+  return prisma.bookmark.findMany({
+    where: { userId, deletedAt: { not: null } },
+    include: {
+      folder: { select: { id: true, name: true } },
+      tags:   { include: { tag: { select: { id: true, name: true, source: true } } } },
+    },
+    orderBy: { deletedAt: 'desc' },
+  });
+}
+
+/** Ripristina un bookmark dal cestino. */
+export async function restoreBookmark(id: string, userId: string) {
+  const bm = await prisma.bookmark.findFirst({ where: { id, userId } });
+  if (!bm) throw new AppError(404, 'Bookmark non trovato');
+  return prisma.bookmark.update({ where: { id }, data: { deletedAt: null } });
+}
+
+/** Svuota il cestino: elimina permanentemente tutti i bookmark cancellati. */
+export async function emptyTrash(userId: string) {
+  return prisma.bookmark.deleteMany({ where: { userId, deletedAt: { not: null } } });
+}

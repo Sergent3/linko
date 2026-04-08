@@ -109,6 +109,11 @@ a:hover {
   border-left-color: var(--accent);
 }
 
+.bookmark-item:hover .delete-btn {
+  opacity: 1 !important;
+}
+
+
 .bookmark-item img {
   width: 18px;
   height: 18px;

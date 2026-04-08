@@ -11,12 +11,17 @@ export default function SaveQuickPage() {
   const [message, setMessage] = useState('');
   const [firstTime, setFirstTime] = useState(false);
 
-  const params = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search)
-    : new URLSearchParams();
-  const url   = params.get('url')   ?? '';
-  const title = params.get('title') ?? '';
-  const description = params.get('description') ?? '';
+  // Letti in useEffect per evitare hydration mismatch (SSR vs client)
+  const [url, setUrl]               = useState('');
+  const [title, setTitle]           = useState('');
+  const [description, setDescription] = useState('');
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setUrl(p.get('url') ?? '');
+    setTitle(p.get('title') ?? '');
+    setDescription(p.get('description') ?? '');
+  }, []);
 
   /* ── Carica cartelle + controlla se è il primo utilizzo ── */
   useEffect(() => {

@@ -56,6 +56,29 @@ bookmarksRouter.get('/export/html', async (req, res, next) => {
   }
 });
 
+// GET /api/v1/bookmarks/trash
+bookmarksRouter.get('/trash', async (req, res, next) => {
+  try {
+    res.json(await service.listTrashedBookmarks(req.user.id));
+  } catch (err) { next(err); }
+});
+
+// PATCH /api/v1/bookmarks/:id/restore
+bookmarksRouter.patch('/:id/restore', async (req, res, next) => {
+  try {
+    res.json(await service.restoreBookmark(req.params.id, req.user.id));
+  } catch (err) { next(err); }
+});
+
+// DELETE /api/v1/bookmarks/trash  →  svuota cestino
+bookmarksRouter.delete('/trash', async (req, res, next) => {
+  try {
+    await service.emptyTrash(req.user.id);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+
 // GET /api/v1/bookmarks/:id
 bookmarksRouter.get('/:id', async (req, res, next) => {
   try {

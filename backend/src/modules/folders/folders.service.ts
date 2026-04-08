@@ -48,7 +48,7 @@ export async function deleteFolder(id: string, userId: string) {
   }
 
   // Elimina tutti i bookmark della cartella
-  await prisma.bookmark.deleteMany({ where: { folderId: id, userId } });
+  await prisma.bookmark.updateMany({ where: { folderId: id, userId }, data: { deletedAt: new Date() } });
 
   return prisma.folder.delete({ where: { id } });
 }

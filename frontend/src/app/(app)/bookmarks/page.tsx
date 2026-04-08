@@ -1,13 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Command, Inbox, Archive, Download } from 'lucide-react';
+import { Plus, Inbox, Archive, Download, LogOut } from 'lucide-react';
 import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import CommandPalette from '@/components/CommandPalette';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
 import BookmarkletTools from '@/components/bookmarks/BookmarkletTools';
+import TrashWidget from '@/components/bookmarks/TrashWidget';
 import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
 import { useSearch } from '@/contexts/SearchContext';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Bookmark, Folder } from '@/types/api';
 
 const STORAGE_KEY = 'linko_folder_order';
@@ -29,12 +31,16 @@ export default function BookmarksDashboardPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'inbox' | 'archive'>('inbox');
+  const [trashedBookmarks, setTrashedBookmarks] = useState<Bookmark[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ folderId: string; name: string; count: number } | null>(null);
 
   // Valori pre-compilati dal bookmarklet (intercettati dai query params)
   const [bookmarkletUrl, setBookmarkletUrl] = useState('');
   const [bookmarkletTitle, setBookmarkletTitle] = useState('');
 
   const { search } = useSearch();
+  const { logout } = useAuth();
+
 
   /* ── Intercetta parametri bookmarklet ───────────────────────────────────────
    * Il bookmarklet apre /bookmarks?add_url=...&add_title=...
@@ -60,12 +66,14 @@ export default function BookmarksDashboardPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [bRes, fList] = await Promise.all([
+      const [bRes, fList, trashData] = await Promise.all([
         bookmarksApi.list({ page: 1, limit: 2000 }),
         foldersApi.list(),
+        bookmarksApi.trash(),
       ]);
       setAllBookmarks(bRes.data ?? []);
       setFolderList(fList ?? []);
+      setTrashedBookmarks(trashData ?? []);
       // Inizializza l'ordine: saved order prima, poi eventuali nuove cartelle in coda
       const saved = loadOrder();
       const allIds = (fList ?? []).map((f: Folder) => f.id);
@@ -80,6 +88,47 @@ export default function BookmarksDashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* ── Auto-scroll durante drag ────────────────────────────────────────────
+   * L'API HTML5 drag non scrolla la finestra automaticamente.
+   * Aggiungiamo un listener su dragover che scrolla se il cursore è vicino
+   * ai bordi superiore/inferiore della viewport.
+   * ────────────────────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const ZONE = 80;   // px dal bordo che attiva lo scroll
+    const SPEED = 12;  // px per frame
+    let rafId: number | null = null;
+    let clientY = 0;
+
+    const onDragOver = (e: DragEvent) => { clientY = e.clientY; };
+
+    const scroll = () => {
+      const h = window.innerHeight;
+      if (clientY < ZONE) {
+        window.scrollBy(0, -SPEED * (1 - clientY / ZONE));
+      } else if (clientY > h - ZONE) {
+        window.scrollBy(0, SPEED * (1 - (h - clientY) / ZONE));
+      }
+      rafId = requestAnimationFrame(scroll);
+    };
+
+    const onDragStart = () => { rafId = requestAnimationFrame(scroll); };
+    const onDragEnd   = () => { if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } };
+
+    window.addEventListener('dragover',  onDragOver);
+    window.addEventListener('dragstart', onDragStart);
+    window.addEventListener('dragend',   onDragEnd);
+    window.addEventListener('drop',      onDragEnd);
+
+    return () => {
+      window.removeEventListener('dragover',  onDragOver);
+      window.removeEventListener('dragstart', onDragStart);
+      window.removeEventListener('dragend',   onDragEnd);
+      window.removeEventListener('drop',      onDragEnd);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+
   /* ── Handlers ────────────────────────────────────────────────────────────── */
   const handleDelete = useCallback(async (id: string) => {
     try {
@@ -87,6 +136,14 @@ export default function BookmarksDashboardPage() {
       setAllBookmarks((prev) => prev.filter((b) => b.id !== id));
     } catch { /* ignore */ }
   }, []);
+
+  const handleRenameBookmark = useCallback(async (id: string, newTitle: string) => {
+    try {
+      await bookmarksApi.update(id, { title: newTitle });
+      setAllBookmarks((prev) => prev.map((b) => b.id === id ? { ...b, title: newTitle } : b));
+    } catch { /* ignore */ }
+  }, []);
+
 
   const handleWidgetReorder = useCallback((draggedId: string, targetId: string, position: 'before' | 'after') => {
     setFolderOrder((prev) => {
@@ -142,10 +199,24 @@ export default function BookmarksDashboardPage() {
     }
   }, [allBookmarks]);
 
-  const handleFolderDelete = useCallback(async (folderId: string) => {
+  const handleFolderDelete = useCallback(async (folderId: string, folderName: string) => {
+    // Conta i bookmark nella cartella (incluse sotto-cartelle)
+    const collectIds = (id: string, list: Folder[]): Set<string> => {
+      const set = new Set<string>([id]);
+      list.filter((f) => f.parentId === id).forEach((f) => collectIds(f.id, list).forEach((x) => set.add(x)));
+      return set;
+    };
+    const ids = collectIds(folderId, folderList);
+    const count = allBookmarks.filter((b) => ids.has(b.folderId ?? '')).length;
+    setDeleteConfirm({ folderId, name: folderName, count });
+  }, [folderList, allBookmarks]);
+
+  const confirmFolderDelete = useCallback(async () => {
+    if (!deleteConfirm) return;
+    const { folderId } = deleteConfirm;
+    setDeleteConfirm(null);
     try {
       await foldersApi.delete(folderId);
-      // Raccoglie gli id di tutte le cartelle eliminate (la cartella + eventuali figli già in lista)
       setFolderList((prev) => {
         const deleted = new Set<string>();
         const collect = (id: string) => {
@@ -153,22 +224,49 @@ export default function BookmarksDashboardPage() {
           prev.filter((f) => f.parentId === id).forEach((f) => collect(f.id));
         };
         collect(folderId);
-        // Elimina i bookmark delle cartelle rimosse
         setAllBookmarks((bms) => bms.filter((b) => !deleted.has(b.folderId ?? '')));
+        // Ricarica il cestino per mostrare i bookmark appena spostati
+        bookmarksApi.trash().then(setTrashedBookmarks).catch(() => {});
         if (deleted.has(activeFolder ?? '')) setActiveFolder(null);
-        const next = prev.filter((f) => !deleted.has(f.id));
         setFolderOrder((o) => { const no = o.filter((id) => !deleted.has(id)); saveOrder(no); return no; });
-        return next;
+        return prev.filter((f) => !deleted.has(f.id));
       });
     } catch (err) {
       console.error('Errore eliminazione cartella:', err);
       alert('Impossibile eliminare la cartella. Riprova.');
     }
-  }, [activeFolder]);
+  }, [deleteConfirm, activeFolder]);
+
 
   const handleCreated = useCallback((bm: Bookmark) => {
     setAllBookmarks((prev) => [bm, ...prev]);
     setActiveFolder(null); // mostra "Tutti" così il nuovo segnalibro è sempre visibile
+  }, []);
+
+  const handleTrashRestore = useCallback(async (id: string) => {
+    try {
+      const bm = await bookmarksApi.restore(id);
+      setTrashedBookmarks((prev) => prev.filter((b) => b.id !== id));
+      setAllBookmarks((prev) => [bm, ...prev]);
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleTrashHardDelete = useCallback(async (id: string) => {
+    try {
+      const access = (await import('@/lib/api')).tokens.access;
+      await fetch(`/api/v1/bookmarks/${id}/permanent`, {
+        method: 'DELETE',
+        headers: access ? { Authorization: `Bearer ${access}` } : {},
+      });
+      setTrashedBookmarks((prev) => prev.filter((b) => b.id !== id));
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleEmptyTrash = useCallback(async () => {
+    try {
+      await bookmarksApi.emptyTrash();
+      setTrashedBookmarks([]);
+    } catch { /* ignore */ }
   }, []);
 
   function openAddModal() {
@@ -295,6 +393,15 @@ export default function BookmarksDashboardPage() {
           <Plus size={13} />
           Aggiungi
         </button>
+        <button
+          className="btn-add"
+          onClick={logout}
+          style={{ marginLeft: 6, flexShrink: 0, background: '#5a3535' }}
+          title="Logout"
+        >
+          <LogOut size={13} />
+          Logout
+        </button>
       </div>
 
       {/* ── Bookmark grid ──────────────────────────────────────────────────── */}
@@ -320,10 +427,12 @@ export default function BookmarksDashboardPage() {
               bookmarks={items}
               onDelete={handleDelete}
               onAddClick={openAddModal}
-              onFolderDelete={folder ? handleFolderDelete : undefined}
+              onFolderDelete={folder ? (id) => handleFolderDelete(id, folder.name) : undefined}
               onClearAll={!folder ? handleClearUncategorized : undefined}
               onMoveBookmark={handleMoveBookmark}
               onRename={handleRename}
+
+              onRenameBookmark={handleRenameBookmark}
               onWidgetReorder={handleWidgetReorder}
             />
           ))}
@@ -335,6 +444,12 @@ export default function BookmarksDashboardPage() {
 
           {/* ── Tools widget ─────────────────────────────────────────────── */}
           <BookmarkletTools />
+          <TrashWidget
+            bookmarks={trashedBookmarks}
+            onRestore={handleTrashRestore}
+            onHardDelete={handleTrashHardDelete}
+            onEmptyTrash={handleEmptyTrash}
+          />
         </div>
       )}
 
@@ -347,6 +462,25 @@ export default function BookmarksDashboardPage() {
           initialUrl={bookmarkletUrl}
           initialTitle={bookmarkletTitle}
         />
+      )}
+
+      {/* ── Conferma eliminazione cartella ───────────────────────────────────── */}
+      {deleteConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#2e2e2e', borderRadius: 12, padding: 28, maxWidth: 380, width: '90%', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+            <h3 style={{ margin: '0 0 12px', color: '#e57373', fontSize: 16 }}>Elimina cartella</h3>
+            <p style={{ margin: '0 0 20px', color: '#ccc', fontSize: 14, lineHeight: 1.5 }}>
+              Stai per eliminare <strong style={{ color: '#fff' }}>{deleteConfirm.name}</strong>.
+              {deleteConfirm.count > 0
+                ? <> I <strong style={{ color: '#fff' }}>{deleteConfirm.count} bookmark</strong> al suo interno saranno spostati nel cestino.</>
+                : ' La cartella è vuota.'}
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeleteConfirm(null)} style={{ background: '#444', color: '#ccc', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>Annulla</button>
+              <button onClick={confirmFolderDelete} style={{ background: '#c0392b', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>Elimina</button>
+            </div>
+          </div>
+        </div>
       )}
       {/* ── Command Palette ────────────────────────────────────────────────── */}
       <CommandPalette bookmarks={allBookmarks} folders={folderList} />
