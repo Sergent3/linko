@@ -30,7 +30,6 @@ const TICK_BATCH = 100;
 // Minimo della frequenza adattiva: abbastanza per i forum veloci, senza martellare i siti
 const MIN_INTERVAL = 10;
 const MAX_FAILS = 5;
-const ITEM_RETENTION_DAYS = 90;
 const CHECK_RETENTION_DAYS = 30;
 
 export type WatchJobData =
@@ -327,14 +326,8 @@ async function verify(userId: string, credentialId: string, url: string): Promis
 // ── cleanup ───────────────────────────────────────────────────────────────────
 
 async function cleanup(): Promise<void> {
+  // Gli elementi trovati restano per sempre (si eliminano solo con la fonte): si pulisce solo il registro dei controlli
   const now = Date.now();
-  await prisma.watchItem.deleteMany({
-    where: {
-      isRead: true,
-      savedBookmarkId: null,
-      firstSeenAt: { lt: new Date(now - ITEM_RETENTION_DAYS * 86_400_000) },
-    },
-  });
   await prisma.watchCheck.deleteMany({
     where: { startedAt: { lt: new Date(now - CHECK_RETENTION_DAYS * 86_400_000) } },
   });

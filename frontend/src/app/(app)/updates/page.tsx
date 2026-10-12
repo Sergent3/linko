@@ -48,7 +48,7 @@ export default function UpdatesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [activeSource, setActiveSource] = useState<string | null>(null);
-  const [onlyUnread, setOnlyUnread] = useState(true);
+  const [onlyUnread, setOnlyUnread] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
@@ -56,11 +56,11 @@ export default function UpdatesPage() {
   const [wizardBookmarkId, setWizardBookmarkId] = useState<string | undefined>();
   const [wizardTitle, setWizardTitle] = useState('');
 
-  // Stato iniziale dall'URL: ?source=…&view=all, oppure apertura del wizard (?add_url=…&bookmark=…)
+  // Stato iniziale dall'URL: ?source=…&view=unread, oppure apertura del wizard (?add_url=…&bookmark=…)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setActiveSource(params.get('source'));
-    setOnlyUnread(params.get('view') !== 'all');
+    setOnlyUnread(params.get('view') === 'unread');
     const addUrl = params.get('add_url');
     if (addUrl) {
       setWizardUrl(addUrl);
@@ -75,7 +75,7 @@ export default function UpdatesPage() {
     if (!ready) return;
     const params = new URLSearchParams();
     if (activeSource) params.set('source', activeSource);
-    if (!onlyUnread) params.set('view', 'all');
+    if (onlyUnread) params.set('view', 'unread');
     const qs = params.toString();
     window.history.replaceState({}, '', qs ? `/updates?${qs}` : '/updates');
   }, [ready, activeSource, onlyUnread]);
@@ -250,8 +250,8 @@ export default function UpdatesPage() {
       <div className="toolbar">
         <h1 className="page-title mr-2">Aggiornamenti</h1>
         <div className="tabs" role="tablist" aria-label="Filtro">
-          <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
           <button type="button" role="tab" className="tab" aria-selected={!onlyUnread} onClick={() => setOnlyUnread(false)}>Tutti</button>
+          <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
         </div>
         <div className="flex-1" />
         <button type="button" className="btn btn-secondary" onClick={readAll} aria-label="Segna tutto come letto">
