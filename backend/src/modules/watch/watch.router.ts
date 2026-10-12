@@ -70,8 +70,8 @@ watchRouter.get('/items', async (req, res, next) => {
 // Prima di /items/:id, altrimenti "read-all" verrebbe letto come id
 watchRouter.post('/items/read-all', async (req, res, next) => {
   try {
-    const { sourceId } = readAllSchema.parse(req.body ?? {});
-    res.json(await service.markAllRead(req.user.id, sourceId));
+    const { sourceId, domain } = readAllSchema.parse(req.body ?? {});
+    res.json(await service.markAllRead(req.user.id, sourceId, domain));
   } catch (err) { next(err); }
 });
 

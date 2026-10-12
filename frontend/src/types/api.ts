@@ -94,7 +94,7 @@ export interface WatchSource {
   name: string;
   url: string;
   kind: 'SITE' | 'FORUM';
-  mode: 'AREA' | 'FEED';
+  mode: 'AREA' | 'FEED' | 'THREAD';
   selector: string | null;
   feedUrl: string | null;
   filter: string;

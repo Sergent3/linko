@@ -46,6 +46,8 @@ export const listItemsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   sourceId: z.string().cuid().optional(),
+  // Tutte le fonti dello stesso sito (host senza www)
+  domain: z.string().trim().min(3).max(253).regex(/^[a-z0-9.-]+$/i, 'Dominio non valido').optional(),
   unread: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -74,6 +76,7 @@ export const updateItemSchema = z.object({
 
 export const readAllSchema = z.object({
   sourceId: z.string().cuid().optional(),
+  domain: z.string().trim().min(3).max(253).regex(/^[a-z0-9.-]+$/i, 'Dominio non valido').optional(),
 });
 
 export type PreviewDto = z.infer<typeof previewSchema>;

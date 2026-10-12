@@ -122,11 +122,23 @@ export async function listChecks(id: string, userId: string) {
 // Elementi
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Id delle fonti dell'utente che appartengono al sito (host senza www). */
+async function sourceIdsForDomain(userId: string, domain: string): Promise<string[]> {
+  const target = domain.toLowerCase().replace(/^www\./, '');
+  const sources = await prisma.watchSource.findMany({ where: { userId }, select: { id: true, url: true } });
+  return sources.filter((s) => hostOf(s.url) === target).map((s) => s.id);
+}
+
+function hostOf(url: string): string {
+  try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; }
+}
+
 export async function listItems(dto: ListItemsDto, userId: string) {
   const where = {
     userId,
     isHidden: false,
     ...(dto.sourceId && { sourceId: dto.sourceId }),
+    ...(!dto.sourceId && dto.domain && { sourceId: { in: await sourceIdsForDomain(userId, dto.domain) } }),
     ...(dto.unread !== undefined && { isRead: !dto.unread }),
   };
   const [data, total] = await Promise.all([
@@ -147,9 +159,12 @@ export async function updateItem(id: string, dto: UpdateItemDto, userId: string)
   return prisma.watchItem.update({ where: { id }, data: dto });
 }
 
-export async function markAllRead(userId: string, sourceId?: string) {
+export async function markAllRead(userId: string, sourceId?: string, domain?: string) {
+  const scope = sourceId
+    ? { sourceId }
+    : domain ? { sourceId: { in: await sourceIdsForDomain(userId, domain) } } : {};
   const { count } = await prisma.watchItem.updateMany({
-    where: { userId, isRead: false, ...(sourceId && { sourceId }) },
+    where: { userId, isRead: false, ...scope },
     data: { isRead: true },
   });
   return { updated: count };

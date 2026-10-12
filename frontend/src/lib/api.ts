@@ -254,7 +254,7 @@ export const watchApi = {
 
   checkNow: (id: string) => request<WatchSource>(`/watch/sources/${id}/check`, { method: 'POST' }),
 
-  items: (filters: { page?: number; limit?: number; sourceId?: string; unread?: boolean } = {}) => {
+  items: (filters: { page?: number; limit?: number; sourceId?: string; domain?: string; unread?: boolean } = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== undefined && v !== null) params.set(k, String(v));
@@ -266,8 +266,8 @@ export const watchApi = {
   updateItem: (id: string, dto: Partial<Pick<WatchItem, 'isRead' | 'isHidden'>>) =>
     request<WatchItem>(`/watch/items/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
 
-  readAll: (sourceId?: string) =>
-    request<{ updated: number }>('/watch/items/read-all', { method: 'POST', body: JSON.stringify({ sourceId }) }),
+  readAll: (scope: { sourceId?: string; domain?: string } = {}) =>
+    request<{ updated: number }>('/watch/items/read-all', { method: 'POST', body: JSON.stringify(scope) }),
 
   saveItem: (id: string) => request<WatchItem>(`/watch/items/${id}/save`, { method: 'POST' }),
 

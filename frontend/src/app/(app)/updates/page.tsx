@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound,
+  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
@@ -36,6 +36,31 @@ function relative(iso: string | null): string {
   return fmtRelative.format(Math.round(min / 1440), 'day');
 }
 
+/** Sito della fonte: host senza www, per raggruppare le fonti dello stesso dominio. */
+function siteOf(url: string): string {
+  try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return url; }
+}
+
+function modeLabel(mode: WatchSource['mode']): string {
+  return mode === 'FEED' ? 'Feed RSS/Atom' : mode === 'THREAD' ? 'Discussione' : 'Area della pagina';
+}
+
+function SiteIcon({ site }: { site: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <span className="favicon favicon-fallback" aria-hidden="true" />;
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${site}&sz=32`}
+      alt=""
+      width={16}
+      height={16}
+      loading="lazy"
+      className="favicon"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function every(minutes: number): string {
   return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
 }
@@ -48,6 +73,8 @@ export default function UpdatesPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [activeSource, setActiveSource] = useState<string | null>(null);
+  // In alternativa a una fonte: tutte le fonti dello stesso sito
+  const [activeSite, setActiveSite] = useState<string | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,6 +87,7 @@ export default function UpdatesPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setActiveSource(params.get('source'));
+    setActiveSite(params.get('source') ? null : params.get('site'));
     setOnlyUnread(params.get('view') === 'unread');
     const addUrl = params.get('add_url');
     if (addUrl) {
@@ -75,10 +103,11 @@ export default function UpdatesPage() {
     if (!ready) return;
     const params = new URLSearchParams();
     if (activeSource) params.set('source', activeSource);
+    else if (activeSite) params.set('site', activeSite);
     if (onlyUnread) params.set('view', 'unread');
     const qs = params.toString();
     window.history.replaceState({}, '', qs ? `/updates?${qs}` : '/updates');
-  }, [ready, activeSource, onlyUnread]);
+  }, [ready, activeSource, activeSite, onlyUnread]);
 
   const loadSources = useCallback(async () => {
     try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
@@ -89,7 +118,7 @@ export default function UpdatesPage() {
     setLoading(true);
     try {
       const res = await watchApi.items({
-        page: p, limit: PAGE_SIZE, sourceId: activeSource ?? undefined, unread: onlyUnread ? true : undefined,
+        page: p, limit: PAGE_SIZE, sourceId: activeSource ?? undefined, domain: activeSource ? undefined : activeSite ?? undefined, unread: onlyUnread ? true : undefined,
       });
       setItems((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
       setTotal(res.meta.total);
@@ -99,7 +128,7 @@ export default function UpdatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeSource, onlyUnread, ui]);
+  }, [activeSource, activeSite, onlyUnread, ui]);
 
   useEffect(() => { loadSources(); }, [loadSources]);
   useEffect(() => { if (ready) loadItems(1); }, [ready, loadItems]);
@@ -179,7 +208,7 @@ export default function UpdatesPage() {
 
   async function readAll() {
     try {
-      await watchApi.readAll(activeSource ?? undefined);
+      await watchApi.readAll(activeSource ? { sourceId: activeSource } : activeSite ? { domain: activeSite } : {});
       loadItems(1);
       loadSources();
     } catch {
@@ -189,6 +218,27 @@ export default function UpdatesPage() {
 
   /* ── Azioni fonte ────────────────────────────────────────────────────────── */
   const current = sourceList.find((s) => s.id === activeSource) ?? null;
+
+  // Fonti raggruppate per sito, nell'ordine in cui compaiono
+  const groups = useMemo(() => {
+    const bySite = new Map<string, WatchSource[]>();
+    for (const s of sourceList) {
+      const site = siteOf(s.url);
+      bySite.set(site, [...(bySite.get(site) ?? []), s]);
+    }
+    return [...bySite].map(([site, list]) => ({ site, sources: list, unread: list.reduce((n, x) => n + x.unreadCount, 0) }));
+  }, [sourceList]);
+  const currentGroup = !current && activeSite ? groups.find((g) => g.site === activeSite) ?? null : null;
+
+  function selectSource(id: string | null) {
+    setActiveSource(id);
+    setActiveSite(null);
+  }
+
+  function selectSite(site: string) {
+    setActiveSite(site);
+    setActiveSource(null);
+  }
 
   async function toggleActive(s: WatchSource) {
     try {
@@ -229,8 +279,10 @@ export default function UpdatesPage() {
     if (!ok) return;
     try {
       await watchApi.deleteSource(s.id);
-      setActiveSource(null);
+      if (activeSource === s.id) setActiveSource(null);
+      setSources((prev) => prev && prev.filter((x) => x.id !== s.id));
       loadSources();
+      loadItems(1);
       ui.toast('Fonte eliminata');
     } catch {
       ui.toast('Eliminazione non riuscita. Riprova.', { kind: 'error' });
@@ -272,33 +324,74 @@ export default function UpdatesPage() {
                 type="button"
                 className="bookmark-item w-full text-left"
                 style={{ border: 'none', font: 'inherit', cursor: 'pointer' }}
-                aria-current={activeSource === null ? 'true' : undefined}
-                onClick={() => setActiveSource(null)}
+                aria-current={activeSource === null && activeSite === null ? 'true' : undefined}
+                onClick={() => selectSource(null)}
               >
                 <span className="bookmark-title">Tutte le fonti</span>
                 {totalUnread > 0 && <span className="badge">{totalUnread}</span>}
               </button>
             </li>
-            {sourceList.map((s) => (
-              <li key={s.id}>
-                <button
-                  type="button"
-                  className="bookmark-item w-full text-left"
-                  style={{ border: 'none', font: 'inherit', cursor: 'pointer', opacity: s.isActive ? 1 : 0.55 }}
-                  aria-current={activeSource === s.id ? 'true' : undefined}
-                  title={s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}
-                  onClick={() => setActiveSource(s.id)}
-                >
-                  {s.status === 'ERROR'
-                    ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
-                    : !s.isActive
-                      ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
-                      : s.mode === 'FEED'
-                        ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
-                        : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
-                  <span className="bookmark-title">{s.name}</span>
-                  {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
-                </button>
+            {groups.map((g) => (
+              <li key={g.site}>
+                {g.sources.length > 1 && (
+                  <button
+                    type="button"
+                    className="bookmark-item w-full text-left"
+                    style={{ border: 'none', font: 'inherit', cursor: 'pointer' }}
+                    aria-current={activeSite === g.site ? 'true' : undefined}
+                    title={`Tutte le ${g.sources.length} fonti di ${g.site}`}
+                    onClick={() => selectSite(g.site)}
+                  >
+                    <SiteIcon site={g.site} />
+                    <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
+                    <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
+                    {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
+                  </button>
+                )}
+                <ul style={{ listStyle: 'none' }} aria-label={g.sources.length > 1 ? `Fonti di ${g.site}` : undefined}>
+                  {g.sources.map((s) => (
+                    <li key={s.id}>
+                      <div
+                        className="bookmark-item"
+                        style={{ opacity: s.isActive ? 1 : 0.55, paddingLeft: g.sources.length > 1 ? 30 : undefined }}
+                        aria-current={activeSource === s.id ? 'true' : undefined}
+                      >
+                        <button
+                          type="button"
+                          className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                          style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                          title={s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}
+                          onClick={() => selectSource(s.id)}
+                        >
+                          {s.status === 'ERROR'
+                            ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
+                            : !s.isActive
+                              ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
+                              : g.sources.length === 1
+                                ? <SiteIcon site={g.site} />
+                                : s.mode === 'FEED'
+                                  ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
+                                  : s.mode === 'THREAD'
+                                    ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
+                                    : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
+                          <span className="bookmark-title">{s.name}</span>
+                          {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
+                        </button>
+                        <span className="row-actions">
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn-sm icon-btn-danger"
+                            onClick={() => remove(s)}
+                            aria-label={`Smetti di seguire ${s.name}`}
+                            title="Smetti di seguire"
+                          >
+                            <Trash2 size={13} aria-hidden="true" />
+                          </button>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
             {sources?.length === 0 && (
@@ -322,12 +415,22 @@ export default function UpdatesPage() {
               </Link>
             </div>
           ))}
+          {currentGroup && (
+            <div className="card px-4 py-3 mb-4">
+              <h2 className="font-semibold text-fg-strong flex items-center gap-2" translate="no">
+                <SiteIcon site={currentGroup.site} /> {currentGroup.site}
+              </h2>
+              <p className="text-xs text-fg-muted mt-0.5">
+                {currentGroup.sources.length} fonti: {currentGroup.sources.map((x) => x.name).join(' · ')}
+              </p>
+            </div>
+          )}
           {current && (
             <div className="card flex items-center gap-3 flex-wrap px-4 py-3 mb-4">
               <div className="min-w-0 flex-1">
                 <h2 className="font-semibold text-fg-strong truncate">{current.name}</h2>
                 <p className="text-xs text-fg-muted">
-                  {current.mode === 'FEED' ? 'Feed RSS/Atom' : 'Area della pagina'} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {every(current.currentIntervalMinutes)}
+                  {modeLabel(current.mode)} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {every(current.currentIntervalMinutes)}
                   {current.filter && <> · filtro <code className="chip">{current.filter}</code></>}
                 </p>
                 {current.status === 'ERROR' && (
