@@ -62,6 +62,15 @@ describe('suggestAreas', () => {
     expect(areas.findIndex((a) => a.isNavigation)).toBeGreaterThan(1);
   });
 
+  it('riconosce i menu con classi composte (XenForo p-navSticky / p-sectionLinks)', () => {
+    const html = `<html><body><div class="p-navSticky"><div class="p-sectionLinks"><ul class="p-sectionLinks-list">
+      <li><a href="/whats-new/">What's New</a></li><li><a href="/trending/">Trending</a></li><li><a href="/rules/">Forum Rules</a></li>
+    </ul></div></div></body></html>`;
+    const areas = suggestAreas(html, BASE);
+    expect(areas.length).toBeGreaterThan(0);
+    expect(areas.every((a) => a.isNavigation)).toBe(true);
+  });
+
   it('il selettore proposto riestrae gli stessi elementi', () => {
     for (const area of suggestAreas(PAGE, BASE)) {
       const items = extractItems(PAGE, BASE, area.selector);

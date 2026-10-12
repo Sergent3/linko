@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertPublicUrl, authFor, isPrivateAddress, BlockedUrlError, httpErrorMessage } from './http';
+import { assertPublicUrl, authFor, isPrivateAddress, BlockedUrlError, httpErrorMessage, decodeBody, detectCharset } from './http';
 
 vi.mock('../config', () => ({ config: { SCRAPING_TIMEOUT_MS: 1000, WATCH_BLOCKED_IPS: ['51.38.82.241'] } }));
 vi.mock('dns/promises', () => ({
@@ -70,5 +70,21 @@ describe('authFor', () => {
     expect(authFor('evilsimpcity.cr', auths)).toBeUndefined();
     expect(authFor('simpcity.cr.evil.com', auths)).toBeUndefined();
     expect(authFor('example.com', auths)).toBeUndefined();
+  });
+});
+
+describe('decodeBody', () => {
+  it('usa il charset dell\'header', () => {
+    const body = Buffer.from([0xcf, 0xf0, 0xe8]); // "При" in windows-1251
+    expect(decodeBody(body, 'text/html; charset=windows-1251')).toBe('При');
+  });
+  it('usa la dichiarazione XML se l\'header non lo dice', () => {
+    const body = Buffer.concat([Buffer.from('<?xml version="1.0" encoding="windows-1251"?><t>'), Buffer.from([0xcf, 0xf0, 0xe8])]);
+    expect(decodeBody(body, 'application/xml')).toContain('<t>При');
+  });
+  it('usa il meta charset e ripiega su utf-8 per charset sconosciuti', () => {
+    expect(detectCharset(Buffer.from('<meta charset="ISO-8859-1">'), 'text/html')).toBe('iso-8859-1');
+    expect(decodeBody(Buffer.from('città'), 'text/html; charset=x-inventato')).toBe('città');
+    expect(decodeBody(Buffer.from('città'), '')).toBe('città');
   });
 });

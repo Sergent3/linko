@@ -115,6 +115,25 @@ function parseCookieHeader(header: string): Map<string, string> {
   return jar;
 }
 
+/** Charset dichiarato: header Content-Type, poi prologo XML o <meta> nei primi 2 KB. */
+export function detectCharset(body: Buffer, contentType: string): string {
+  const fromHeader = contentType.match(/charset=["']?([\w-]+)/i)?.[1];
+  if (fromHeader) return fromHeader.toLowerCase();
+  const head = body.subarray(0, 2048).toString('latin1');
+  const declared = head.match(/<\?xml[^>]*encoding=["']([\w-]+)/i)?.[1]
+    ?? head.match(/<meta[^>]+charset=["']?([\w-]+)/i)?.[1];
+  return (declared ?? 'utf-8').toLowerCase();
+}
+
+/** Testo della risposta nella codifica giusta (es. windows-1251 dei siti russi); utf-8 se sconosciuta. */
+export function decodeBody(body: Buffer, contentType: string): string {
+  try {
+    return new TextDecoder(detectCharset(body, contentType)).decode(body);
+  } catch {
+    return new TextDecoder('utf-8').decode(body);
+  }
+}
+
 // Domini che di recente hanno chiesto la verifica anti-bot: si va subito col browser
 const BROWSER_MEMORY_MS = 6 * 3_600_000;
 const needsBrowser = new Map<string, number>();
@@ -153,12 +172,12 @@ export async function fetchPage(rawUrl: string, auths: SiteAuth[] = []): Promise
       headers.Cookie = [...jar].map(([n, v]) => `${n}=${v}`).join('; ');
       if (auth.userAgent) headers['User-Agent'] = auth.userAgent;
     }
-    const res = await axios.get<string>(url.toString(), {
+    const res = await axios.get<ArrayBuffer>(url.toString(), {
       headers,
       timeout: config.SCRAPING_TIMEOUT_MS,
       maxRedirects: 0,
       maxContentLength: MAX_BYTES,
-      responseType: 'text',
+      responseType: 'arraybuffer',
       validateStatus: () => true,
     });
     const setCookie = res.headers['set-cookie'];
@@ -173,7 +192,7 @@ export async function fetchPage(rawUrl: string, auths: SiteAuth[] = []): Promise
       current = new URL(res.headers.location, url).toString();
       continue;
     }
-    const html = typeof res.data === 'string' ? res.data : '';
+    const html = decodeBody(Buffer.from(res.data ?? new ArrayBuffer(0)), String(res.headers['content-type'] ?? ''));
     if (res.status >= 400) {
       const { browserAvailable, fetchWithBrowser, isChallenge } = await import('./browser');
       if (browserAvailable() && isChallenge(res.status, res.headers as Record<string, unknown>, html)) {

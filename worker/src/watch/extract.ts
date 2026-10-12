@@ -29,7 +29,8 @@ const MIN_REPEATED = 3;
 // Le sidebar (aside) non sono navigazione: spesso contengono proprio liste utili
 // come "Ultimi post" o "Più letti".
 const NAV_TAGS = new Set(['nav', 'header', 'footer']);
-const NAV_HINT = /\b(nav|menu|breadcrumb|footer|header|pagination|pager|social|share|cookie)\b/i;
+// Parola chiave come token di classe/id, anche dentro nomi composti (p-navSticky, main-menu, sectionLinks)
+const NAV_HINT = /(?:^|[\s_-])(?:nav(?:bar|igation)?|menu|breadcrumbs?|footer|header|pagination|pager|social|share|cookie|sectionLinks)(?=$|[\s_A-Z-])/;
 
 function absUrl(href: string | undefined, baseUrl: string): string | null {
   if (!href) return null;

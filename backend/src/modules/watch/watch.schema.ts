@@ -25,7 +25,7 @@ export const createSourceSchema = z
     feedUrl: z.string().url('URL del feed non valido').optional(),
     kind: z.enum(['SITE', 'FORUM']).default('SITE'),
     filter: filter.default(''),
-    intervalMinutes: interval.default(360),
+    intervalMinutes: interval.default(60),
     bookmarkId: z.string().cuid().optional(),
   })
   .refine((d) => !!d.selector !== !!d.feedUrl, {

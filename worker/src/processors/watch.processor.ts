@@ -94,7 +94,8 @@ export function nextInterval(base: number, current: number, found: number, fresh
   if (firstCheck || found === 0) return current;
   if (fresh >= found) return Math.max(MIN_INTERVAL, Math.floor(current / 2));
   if (fresh === 0) return Math.min(base, Math.ceil(current * 1.5));
-  return current;
+  // Novità a ogni controllo: la lista si muove più in fretta dell'intervallo, si accorcia un po'
+  return Math.max(MIN_INTERVAL, Math.floor(current * 0.75));
 }
 
 // ── tick ──────────────────────────────────────────────────────────────────────

@@ -62,7 +62,7 @@ const INTERVALS = [
 ];
 
 // I forum cambiano più in fretta dei siti: frequenza proposta più alta
-const DEFAULT_SITE_INTERVAL = 360;
+const DEFAULT_SITE_INTERVAL = 60;
 const DEFAULT_FORUM_INTERVAL = 30;
 
 function hostname(url: string) {

@@ -22,7 +22,8 @@ describe('nextInterval', () => {
     expect(nextInterval(360, 300, 20, 0, false)).toBe(360);
   });
 
-  it('alcuni nuovi: invariato', () => {
-    expect(nextInterval(360, 120, 20, 3, false)).toBe(120);
+  it('alcuni nuovi: accorcia di un quarto, non sotto 10 minuti', () => {
+    expect(nextInterval(360, 120, 20, 3, false)).toBe(90);
+    expect(nextInterval(60, 12, 20, 3, false)).toBe(10);
   });
 });
