@@ -95,7 +95,7 @@ export default function SaveQuickPage() {
   return (
     <div style={{
       fontFamily: 'system-ui, sans-serif',
-      background: '#2b2b2b',
+      background: 'transparent',
       minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
@@ -103,8 +103,8 @@ export default function SaveQuickPage() {
       padding: 12,
     }}>
       <div style={{
-        background: '#3a3a3a',
-        border: '1px solid #555',
+        background: 'var(--surface)',
+        border: '1px solid var(--border-strong)',
         borderRadius: 8,
         width: '100%',
         maxWidth: 320,
@@ -114,15 +114,15 @@ export default function SaveQuickPage() {
 
         {/* Header */}
         <div style={{
-          background: '#444',
+          background: 'var(--surface-2)',
           padding: '8px 14px',
-          borderBottom: '1px solid #555',
+          borderBottom: '1px solid var(--border-strong)',
           display: 'flex',
           alignItems: 'center',
           gap: 8,
         }}>
           <span style={{ fontSize: 16 }}>⭐</span>
-          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: '#ccc' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', color: 'var(--text-muted)' }}>
             Salva in Linko
           </span>
         </div>
@@ -143,7 +143,7 @@ export default function SaveQuickPage() {
                 <div style={{ fontSize: 12, color: '#6ee7b7', fontWeight: 600, marginBottom: 4 }}>
                   Prima volta su Linko?
                 </div>
-                <div style={{ fontSize: 11, color: '#888', lineHeight: 1.5 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                   Non hai ancora nessun bookmark salvato. Vuoi importare tutti i preferiti
                   dal tuo browser in un colpo solo?
                 </div>
@@ -153,7 +153,7 @@ export default function SaveQuickPage() {
                 onClick={openImport}
                 style={{
                   width: '100%',
-                  background: '#3a7bd5',
+                  background: 'var(--accent)',
                   border: 'none',
                   borderRadius: 4,
                   color: '#fff',
@@ -172,9 +172,9 @@ export default function SaveQuickPage() {
                 style={{
                   width: '100%',
                   background: 'transparent',
-                  border: '1px solid #555',
+                  border: '1px solid var(--border-strong)',
                   borderRadius: 4,
-                  color: '#888',
+                  color: 'var(--text-muted)',
                   padding: '6px 0',
                   fontSize: 11,
                   cursor: 'pointer',
@@ -190,13 +190,13 @@ export default function SaveQuickPage() {
             <>
               {/* URL */}
               <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
                   Pagina
                 </div>
-                <div style={{ fontSize: 12, color: '#ddd', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: 12, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {title || domain}
                 </div>
-                <div style={{ fontSize: 10, color: '#666', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
+                <div style={{ fontSize: 10, color: 'var(--text-faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: 2 }}>
                   {domain}
                 </div>
               </div>
@@ -209,7 +209,7 @@ export default function SaveQuickPage() {
               {/* Selettore cartella */}
               {(status === 'ready' || status === 'saving') && folders.length > 0 && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 4 }}>
                     Categoria
                   </div>
                   <select
@@ -218,10 +218,10 @@ export default function SaveQuickPage() {
                     disabled={status === 'saving'}
                     style={{
                       width: '100%',
-                      background: '#222',
-                      border: '1px solid #555',
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border-strong)',
                       borderRadius: 4,
-                      color: '#ddd',
+                      color: 'var(--text)',
                       padding: '6px 8px',
                       fontSize: 12,
                       cursor: 'pointer',
@@ -243,10 +243,10 @@ export default function SaveQuickPage() {
                     disabled={status === 'saving'}
                     style={{
                       flex: 1,
-                      background: '#555',
-                      border: '1px solid #666',
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border-strong)',
                       borderRadius: 4,
-                      color: '#ccc',
+                      color: 'var(--text-muted)',
                       padding: '7px 0',
                       fontSize: 12,
                       cursor: 'pointer',
@@ -259,7 +259,7 @@ export default function SaveQuickPage() {
                     disabled={status === 'saving'}
                     style={{
                       flex: 2,
-                      background: status === 'saving' ? '#2a5a8a' : '#3a7bd5',
+                      background: status === 'saving' ? 'var(--surface-2)' : 'var(--accent)',
                       border: 'none',
                       borderRadius: 4,
                       color: '#fff',
@@ -275,7 +275,7 @@ export default function SaveQuickPage() {
               )}
 
               {status === 'loading' && (
-                <div style={{ textAlign: 'center', color: '#888', fontSize: 12, padding: '8px 0' }}>
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 12, padding: '8px 0' }}>
                   Caricamento…
                 </div>
               )}

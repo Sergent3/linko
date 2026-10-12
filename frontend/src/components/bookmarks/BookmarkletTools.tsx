@@ -68,11 +68,11 @@ export default function BookmarkletTools() {
   }, []);
 
   return (
-    <div className="widget-card" style={{ marginBottom: 0 }}>
+    <div className="widget-card">
       {/* Header */}
       <div
         className="widget-card-header"
-        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        style={{ gap: 6, paddingLeft: 12 }}
       >
         <MousePointer2 size={11} />
         <span>Bookmarklet — Salva da qualsiasi browser</span>
@@ -81,7 +81,7 @@ export default function BookmarkletTools() {
       {/* Body */}
       <div style={{ padding: '12px 14px' }}>
         {/* Descrizione */}
-        <p style={{ fontSize: 12, color: '#999', marginBottom: 12, lineHeight: 1.55 }}>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.55 }}>
           Un bookmarklet è un piccolo programma salvato come segnalibro nel browser.
           Cliccandolo su qualsiasi pagina la salva direttamente in Linko — nessuna
           finestra aperta, compare solo un toast di conferma per 3 secondi.
@@ -90,8 +90,8 @@ export default function BookmarkletTools() {
         {/* ── Desktop: drag area ─────────────────────────────────────── */}
         <div
           style={{
-            background: '#222',
-            border: '1px dashed #484848',
+            background: 'var(--bg)',
+            border: '1px dashed var(--border-strong)',
             borderRadius: 4,
             padding: '12px 14px',
             marginBottom: 10,
@@ -103,7 +103,7 @@ export default function BookmarkletTools() {
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
-              color: '#888',
+              color: 'var(--text-muted)',
               marginBottom: 10,
             }}
           >
@@ -123,14 +123,14 @@ export default function BookmarkletTools() {
                 alignItems: 'center',
                 gap: 6,
                 padding: '7px 16px',
-                background: '#3a7bd5',
+                background: 'var(--accent)',
                 color: '#fff',
                 borderRadius: 4,
                 fontSize: 12,
                 fontWeight: 700,
                 textDecoration: 'none',
                 cursor: 'grab',
-                border: '1px solid #4e8fe0',
+                border: '1px solid var(--accent-hover)',
                 userSelect: 'none',
                 whiteSpace: 'nowrap',
                 flexShrink: 0,
@@ -147,7 +147,7 @@ export default function BookmarkletTools() {
               ⭐ Salva in Linko
             </a>
 
-            <span style={{ fontSize: 11, color: '#555', lineHeight: 1.45 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.45 }}>
               ← trascina qui sopra nella barra dei segnalibri
             </span>
           </div>
@@ -156,29 +156,29 @@ export default function BookmarkletTools() {
         {/* ── Mobile: istruzioni manuali ─────────────────────────────── */}
         <div
           style={{
-            background: '#222',
-            border: '1px solid #383838',
+            background: 'var(--bg)',
+            border: '1px solid var(--border-strong)',
             borderRadius: 4,
             padding: '10px 14px',
             marginBottom: 10,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Smartphone size={11} style={{ color: '#888', flexShrink: 0 }} />
+            <Smartphone size={11} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             <p
               style={{
                 fontSize: 11,
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
-                color: '#888',
+                color: 'var(--text-muted)',
                 margin: 0,
               }}
             >
               Mobile — procedura manuale
             </p>
           </div>
-          <ol style={{ fontSize: 11, color: '#666', margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
+          <ol style={{ fontSize: 11, color: 'var(--text-faint)', margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>
             <li>Aggiungi questa pagina ai preferiti del browser mobile.</li>
             <li>Vai nella gestione preferiti e modifica il segnalibro appena creato.</li>
             <li>
@@ -198,13 +198,13 @@ export default function BookmarkletTools() {
             alignItems: 'flex-start',
             gap: 6,
             padding: '7px 10px',
-            background: '#1e1e1e',
-            borderRadius: 3,
-            border: '1px solid #333',
+            background: 'var(--bg)',
+            borderRadius: 6,
+            border: '1px solid var(--border-strong)',
           }}
         >
-          <Info size={11} style={{ color: '#666', marginTop: 1, flexShrink: 0 }} />
-          <p style={{ fontSize: 11, color: '#666', margin: 0, lineHeight: 1.45 }}>
+          <Info size={11} style={{ color: 'var(--text-faint)', marginTop: 1, flexShrink: 0 }} />
+          <p style={{ fontSize: 11, color: 'var(--text-faint)', margin: 0, lineHeight: 1.45 }}>
             Il bookmarklet non invia dati a terzi. Apre un popup Linko passando
             solo URL e titolo della pagina corrente come parametri nell&apos;indirizzo.
           </p>
@@ -237,10 +237,10 @@ function CopyCodeField({ code }: { code: string }) {
         value={code === '#' ? 'Caricamento...' : code}
         style={{
           flex: 1,
-          background: '#1a1a1a',
-          border: '1px solid #3a3a3a',
-          borderRadius: 3,
-          color: '#666',
+          background: 'var(--bg)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 6,
+          color: 'var(--text-faint)',
           fontSize: 10,
           padding: '5px 8px',
           fontFamily: 'monospace',
@@ -255,9 +255,9 @@ function CopyCodeField({ code }: { code: string }) {
         onClick={handleCopy}
         disabled={code === '#'}
         style={{
-          background: copied ? '#2a5a2a' : '#3a3a3a',
-          border: '1px solid #4a4a4a',
-          borderRadius: 3,
+          background: copied ? '#2a5a2a' : 'var(--surface-2)',
+          border: '1px solid var(--border-strong)',
+          borderRadius: 6,
           color: copied ? '#6f6' : '#aaa',
           fontSize: 11,
           padding: '5px 10px',

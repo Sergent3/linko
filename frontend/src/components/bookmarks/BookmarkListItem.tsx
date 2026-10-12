@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Pencil, X } from 'lucide-react';
 import type { Bookmark } from '@/types/api';
 
 interface Props {
@@ -15,21 +16,19 @@ export default function BookmarkListItem({ bookmark, onDelete, onRename }: Props
   const [editValue, setEditValue] = useState(bookmark.title || bookmark.url);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const label = bookmark.title || bookmark.url;
+
   useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
 
-  function startEdit(e?: React.MouseEvent) {
-    e?.preventDefault();
-    e?.stopPropagation();
+  function startEdit() {
     if (!onRename) return;
-    setEditValue(bookmark.title || bookmark.url);
+    setEditValue(label);
     setEditing(true);
   }
 
   function commitEdit() {
     const name = editValue.trim();
-    if (name && name !== (bookmark.title || bookmark.url) && onRename) {
-      onRename(bookmark.id, name);
-    }
+    if (name && name !== label && onRename) onRename(bookmark.id, name);
     setEditing(false);
   }
 
@@ -43,109 +42,69 @@ export default function BookmarkListItem({ bookmark, onDelete, onRename }: Props
     catch { return ''; }
   })();
 
-  const faviconUrl = domain
-    ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
-    : '';
+  const faviconUrl = domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '';
+
+  const favicon = !imgFailed && faviconUrl ? (
+    <img src={faviconUrl} alt="" width={16} height={16} loading="lazy" className="favicon" onError={() => setImgFailed(true)} />
+  ) : (
+    <span className="favicon favicon-fallback" aria-hidden="true" />
+  );
 
   function handleDragStart(e: React.DragEvent) {
     if (editing) { e.preventDefault(); return; }
-    e.dataTransfer.setData('bookmarkId', bookmark.id);
+    e.dataTransfer.setData('bookmarkid', bookmark.id);
     e.dataTransfer.effectAllowed = 'move';
   }
 
   if (editing) {
     return (
       <div className="bookmark-item" style={{ cursor: 'default' }}>
-        {!imgFailed && faviconUrl ? (
-          <img src={faviconUrl} alt="" onError={() => setImgFailed(true)} />
-        ) : (
-          <div style={{ width: 16, height: 16, marginRight: 8, flexShrink: 0, borderRadius: 2, background: '#555' }} />
-        )}
+        {favicon}
         <input
           ref={inputRef}
+          className="input"
+          style={{ height: 26, fontSize: 13, padding: '0 8px' }}
+          aria-label="Nuovo titolo del segnalibro"
+          name="title"
+          autoComplete="off"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={handleKeyDown}
-          style={{
-            flex: 1, background: '#222', border: '1px solid #3a7bd5',
-            borderRadius: 3, color: '#eee', fontSize: 12, padding: '1px 6px',
-          }}
         />
       </div>
     );
   }
 
   return (
-    <a
-      href={bookmark.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="bookmark-item group"
-      draggable
-      onDragStart={handleDragStart}
-    >
-      {!imgFailed && faviconUrl ? (
-        <img
-          src={faviconUrl}
-          alt=""
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <div
-          style={{
-            width: 16,
-            height: 16,
-            marginRight: 8,
-            flexShrink: 0,
-            borderRadius: 2,
-            background: '#555',
-          }}
-        />
-      )}
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {bookmark.title || bookmark.url}
-      </span>
-      {onRename && (
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); startEdit(e); }}
-          title="Rinomina"
-          style={{
-            marginLeft: 'auto',
-            background: 'none',
-            border: 'none',
-            color: '#666',
-            cursor: 'pointer',
-            fontSize: '12px',
-            padding: '0 2px',
-            flexShrink: 0,
-            opacity: 0,
-            transition: 'opacity 0.15s',
-          }}
-          className="delete-btn"
-        >
-          ✎
-        </button>
-      )}
-      <button
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(bookmark.id); }}
-        title="Elimina"
-        style={{
-          marginLeft: onRename ? 0 : 'auto',
-          background: 'none',
-          border: 'none',
-          color: '#666',
-          cursor: 'pointer',
-          fontSize: '14px',
-          padding: '0 0 0 4px',
-          flexShrink: 0,
-          opacity: 0,
-          transition: 'opacity 0.15s',
-        }}
-        className="delete-btn"
+    <div className="bookmark-item" draggable onDragStart={handleDragStart}>
+      {favicon}
+      <a
+        href={bookmark.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="bookmark-title"
+        title={`${label}\n${bookmark.url}`}
+        onDoubleClick={(e) => { if (onRename) { e.preventDefault(); startEdit(); } }}
       >
-        ×
-      </button>
-    </a>
+        {label}
+      </a>
+      <span className="row-actions">
+        {onRename && (
+          <button type="button" className="icon-btn icon-btn-sm" onClick={startEdit} aria-label={`Rinomina ${label}`} title="Rinomina">
+            <Pencil size={13} aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          className="icon-btn icon-btn-sm icon-btn-danger"
+          onClick={() => onDelete(bookmark.id)}
+          aria-label={`Sposta nel cestino ${label}`}
+          title="Sposta nel cestino"
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      </span>
+    </div>
   );
 }

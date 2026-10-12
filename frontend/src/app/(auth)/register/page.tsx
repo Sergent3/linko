@@ -5,28 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: '#2a2a2a',
-  border: '1px solid #4a4a4a',
-  borderRadius: 3,
-  color: '#e0e0e0',
-  padding: '8px 12px',
-  fontSize: 13,
-  outline: 'none',
-  boxSizing: 'border-box',
-  transition: 'border-color 0.15s',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 600,
-  color: '#aaaaaa',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  marginBottom: 4,
-};
+const MIN_PASSWORD = 8;
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -37,11 +16,13 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const mismatch = confirmPassword.length > 0 && password !== confirmPassword;
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     if (password !== confirmPassword) {
-      setError('Le password non corrispondono');
+      setError('Le password non corrispondono: riscrivile uguali nei due campi.');
       return;
     }
     setLoading(true);
@@ -49,50 +30,28 @@ export default function RegisterPage() {
       await register(email, password);
       router.push('/bookmarks');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Errore durante la registrazione');
+      setError(err instanceof Error ? err.message : 'Registrazione non riuscita. Riprova.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div
-      style={{
-        background: '#2e2e2e',
-        border: '1px solid #444',
-        borderRadius: 6,
-        overflow: 'hidden',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-      }}
-    >
-      {/* Card header */}
-      <div
-        style={{
-          background: '#383838',
-          padding: '10px 16px',
-          borderBottom: '1px solid #444',
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: '#cccccc',
-          }}
-        >
-          Crea un account
-        </span>
-      </div>
+    <div className="card p-6">
+      <h1 className="text-xl font-bold text-fg-strong mb-1">Crea il tuo account</h1>
+      <p className="text-sm text-fg-muted mb-6">Salva, organizza e segui i tuoi link preferiti.</p>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} style={{ padding: 20 }}>
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Email</label>
+      <form onSubmit={handleSubmit}>
+        <div className="mb-4">
+          <label className="field-label" htmlFor="reg-email">Email</label>
           <input
-            style={inputStyle}
+            id="reg-email"
+            name="email"
+            className="input"
             type="email"
+            autoComplete="email"
+            inputMode="email"
+            spellCheck={false}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="tu@esempio.com"
@@ -101,80 +60,52 @@ export default function RegisterPage() {
           />
         </div>
 
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelStyle}>Password</label>
+        <div className="mb-4">
+          <label className="field-label" htmlFor="reg-password">Password</label>
           <input
-            style={inputStyle}
+            id="reg-password"
+            name="new-password"
+            className="input"
             type="password"
+            autoComplete="new-password"
+            minLength={MIN_PASSWORD}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
             required
+            aria-describedby="reg-password-hint"
           />
+          <p id="reg-password-hint" className="field-hint">Almeno {MIN_PASSWORD} caratteri.</p>
         </div>
 
-        <div style={{ marginBottom: 20 }}>
-          <label style={labelStyle}>Conferma password</label>
+        <div className="mb-5">
+          <label className="field-label" htmlFor="reg-confirm">Conferma password</label>
           <input
-            style={inputStyle}
+            id="reg-confirm"
+            name="confirm-password"
+            className="input"
             type="password"
+            autoComplete="new-password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="••••••••"
             required
+            aria-invalid={mismatch || undefined}
+            aria-describedby={mismatch ? 'reg-confirm-error' : undefined}
           />
+          {mismatch && <p id="reg-confirm-error" className="field-hint" style={{ color: 'var(--danger)' }}>Le password non corrispondono.</p>}
         </div>
 
-        {error && (
-          <div
-            style={{
-              marginBottom: 14,
-              padding: '7px 12px',
-              background: '#4a1a1a',
-              border: '1px solid #7a3030',
-              borderRadius: 3,
-              fontSize: 12,
-              color: '#ffaaaa',
-            }}
-          >
-            {error}
-          </div>
-        )}
+        <div aria-live="polite">
+          {error && <div className="alert-error mb-4">{error}</div>}
+        </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: '100%',
-            background: loading ? '#3a3a3a' : '#3a7bd5',
-            border: 'none',
-            borderRadius: 3,
-            color: loading ? '#888' : 'white',
-            padding: '9px 0',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            transition: 'background 0.15s',
-          }}
-        >
-          {loading ? 'Creazione account...' : 'Crea account'}
+        <button type="submit" className="btn btn-primary w-full" style={{ height: 38 }} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 14, height: 14, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} aria-hidden="true" />}
+          {loading ? 'Registrazione in corso…' : 'Crea account'}
         </button>
 
-        <p
-          style={{
-            marginTop: 14,
-            fontSize: 12,
-            color: '#888',
-            textAlign: 'center',
-          }}
-        >
+        <p className="mt-5 text-sm text-fg-muted text-center">
           Hai già un account?{' '}
-          <Link
-            href="/login"
-            style={{ color: '#5b9bd5', textDecoration: 'none' }}
-          >
-            Accedi
-          </Link>
+          <Link href="/login" className="text-accent-text font-medium hover:underline">Accedi</Link>
         </p>
       </form>
     </div>

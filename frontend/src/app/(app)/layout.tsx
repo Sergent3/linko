@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchProvider } from '@/contexts/SearchContext';
+import AppHeader from '@/components/layout/AppHeader';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -16,29 +17,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  if (loading) {
+  if (loading || !user) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          background: '#2b2b2b',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#888',
-          fontSize: 14,
-        }}
-      >
-        Caricamento...
+      <div className="min-h-screen flex items-center justify-center" aria-busy="true">
+        <div className="spinner" aria-label="Caricamento…" />
       </div>
     );
   }
 
   return (
     <SearchProvider>
-      <div style={{ minHeight: '100vh', background: '#2b2b2b' }}>
-        {children}
-      </div>
+      <AppHeader />
+      <main id="main">{children}</main>
     </SearchProvider>
   );
 }

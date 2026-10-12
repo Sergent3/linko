@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Upload, Sparkles, Search, FolderOpen, Shield, Zap } from 'lucide-react';
+import { ArrowRight, Upload, Sparkles, Rss, FolderOpen, Shield, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function HomePage() {
@@ -19,9 +19,9 @@ export default function HomePage() {
 
       {/* ── Nav ── */}
       <header className="max-w-6xl mx-auto flex items-center justify-between px-6 py-5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" translate="no">
           <div className="w-7 h-7 rounded-lg bg-violet-600 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
+            <Zap className="w-4 h-4 text-white" aria-hidden="true" />
           </div>
           <span className="font-display font-bold text-base text-zinc-100">Linko</span>
         </div>
@@ -30,7 +30,7 @@ export default function HomePage() {
           <Link href="/login" className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors">
             Accedi
           </Link>
-          <Link href="/register" className="btn-primary text-sm">
+          <Link href="/register" className="btn btn-primary">
             Inizia gratis <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -41,7 +41,7 @@ export default function HomePage() {
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 bg-zinc-800/60 border border-white/[0.08] rounded-full px-3 py-1 text-xs text-zinc-400 mb-6">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            AI tagging · Import da Chrome · Ricerca istantanea
+            Import da ogni browser · Tag automatici · Aggiornamenti dai siti
           </div>
 
           <h1 className="font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl leading-[1.05] tracking-tight mb-6">
@@ -51,15 +51,15 @@ export default function HomePage() {
           </h1>
 
           <p className="text-lg text-zinc-400 max-w-xl mb-8 leading-relaxed">
-            Salva segnalibri da qualsiasi browser, taggati automaticamente dall&apos;AI.
-            Ritrova tutto in secondi con la ricerca full-text.
+            Salva segnalibri da qualsiasi browser, organizzali in cartelle e
+            ricevi i nuovi contenuti dei siti che segui in un&apos;unica pagina.
           </p>
 
           <div className="flex items-center gap-3">
-            <Link href="/register" className="btn-primary">
+            <Link href="/register" className="btn btn-primary" style={{ height: 42, padding: "0 18px" }}>
               Crea account gratuito <ArrowRight className="w-4 h-4" />
             </Link>
-            <Link href="/login" className="btn-secondary">
+            <Link href="/login" className="btn btn-secondary" style={{ height: 42, padding: "0 18px" }}>
               Accedi
             </Link>
           </div>
@@ -81,7 +81,7 @@ export default function HomePage() {
             <h3 className="font-display font-bold text-xl text-zinc-100 mb-2">
               Da qualsiasi browser
             </h3>
-            <p className="text-sm text-zinc-500 leading-relaxed max-w-sm">
+            <p className="text-sm text-zinc-400 leading-relaxed max-w-sm">
               Esporta il file HTML da Chrome, Firefox, Safari o Edge. Linko ricrea cartelle, importa tutto e accoda l&apos;arricchimento automaticamente.
             </p>
             {/* Fake import file UI */}
@@ -101,8 +101,8 @@ export default function HomePage() {
             <h3 className="font-display font-bold text-xl text-zinc-100 mb-2">
               Tag automatici
             </h3>
-            <p className="text-sm text-zinc-500 leading-relaxed">
-              Regex istantanee per dominio (GitHub → #dev, YouTube → #video). Placeholder Claude API pronto per tagging avanzato.
+            <p className="text-sm text-zinc-400 leading-relaxed">
+              Ogni link riceve subito dei tag in base al sito (GitHub → #dev, YouTube → #video), così lo ritrovi senza fatica.
             </p>
             <div className="flex flex-wrap gap-1.5 mt-4">
               {['#dev', '#react', '#docs', '#design', '#video', '#ai'].map((t, i) => (
@@ -123,15 +123,10 @@ export default function HomePage() {
           {/* Search */}
           <div className="col-span-12 sm:col-span-6 md:col-span-4 bento hover:border-white/[0.12] transition-colors">
             <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-white/[0.07] flex items-center justify-center mb-4">
-              <Search className="w-5 h-5 text-violet-400" />
+              <Rss className="w-5 h-5 text-violet-400" />
             </div>
-            <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Ricerca full-text</h3>
-            <p className="text-sm text-zinc-500">Titolo, URL, descrizione. Debounce 400ms.</p>
-            <div className="mt-4 flex items-center gap-2 bg-zinc-800/60 border border-white/[0.06] rounded-lg px-3 py-2">
-              <Search className="w-3.5 h-3.5 text-zinc-600" />
-              <span className="text-xs text-zinc-600">next.js hooks...</span>
-              <span className="ml-auto text-[10px] text-zinc-700">3 risultati</span>
-            </div>
+            <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Aggiornamenti</h3>
+            <p className="text-sm text-zinc-400">Segui feed e sezioni dei siti: i nuovi articoli arrivano in un&apos;unica timeline, filtrati per parole chiave.</p>
           </div>
 
           {/* Organize */}
@@ -140,12 +135,12 @@ export default function HomePage() {
               <FolderOpen className="w-5 h-5 text-violet-400" />
             </div>
             <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Cartelle annidate</h3>
-            <p className="text-sm text-zinc-500">Struttura gerarchica illimitata, conteggio per cartella.</p>
+            <p className="text-sm text-zinc-400">Struttura gerarchica, trascina per riordinare.</p>
             <div className="mt-4 space-y-1">
               {[['Dev', 12], ['  ↳ React', 5], ['  ↳ Next.js', 3], ['Design', 8]].map(([name, count]) => (
                 <div key={String(name)} className="flex items-center justify-between text-xs">
-                  <span className="text-zinc-500 font-mono">{name}</span>
-                  <span className="text-zinc-700">{count}</span>
+                  <span className="text-zinc-400 font-mono">{name}</span>
+                  <span className="text-zinc-500 tabular-nums">{count}</span>
                 </div>
               ))}
             </div>
@@ -157,7 +152,7 @@ export default function HomePage() {
               <Shield className="w-5 h-5 text-violet-400" />
             </div>
             <h3 className="font-display font-bold text-lg text-zinc-100 mb-1">Self-hosted</h3>
-            <p className="text-sm text-zinc-500">I tuoi dati rimangono sui tuoi server. JWT auth, soft-delete, nessun tracking.</p>
+            <p className="text-sm text-zinc-400">I tuoi dati restano sul tuo server. Nessun tracciamento, cestino per recuperare ciò che elimini.</p>
           </div>
 
         </div>
@@ -165,7 +160,7 @@ export default function HomePage() {
 
       {/* ── Footer ── */}
       <footer className="border-t border-white/[0.04] px-6 py-5 text-center">
-        <p className="text-xs text-zinc-700">Linko · Stack: Next.js · Express · PostgreSQL · BullMQ</p>
+        <p className="text-xs text-zinc-500" translate="no">Linko</p>
       </footer>
     </div>
   );

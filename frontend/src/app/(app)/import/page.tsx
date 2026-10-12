@@ -47,7 +47,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+    <div className="p-4 sm:p-8">
       <div className="max-w-xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -64,6 +64,10 @@ export default function ImportPage() {
             onDragOver={(e) => { e.preventDefault(); setState('dragging'); }}
             onDragLeave={() => setState('idle')}
             onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
+            role="button"
+            tabIndex={0}
+            aria-label="Seleziona il file HTML dei segnalibri"
             className={`group cursor-pointer border-2 border-dashed rounded-2xl p-12 flex flex-col items-center gap-5 transition-all duration-200 ${
               state === 'dragging'
                 ? 'border-violet-500/50 bg-violet-500/5'
@@ -84,7 +88,7 @@ export default function ImportPage() {
               <p className="font-medium text-zinc-300 mb-1">
                 {state === 'dragging' ? 'Rilascia il file qui' : 'Trascina o clicca per selezionare'}
               </p>
-              <p className="text-sm text-zinc-600">File HTML — Chrome · Firefox · Safari · Edge</p>
+              <p className="text-sm text-zinc-500">File HTML — Chrome · Firefox · Safari · Edge</p>
             </div>
 
             <input
@@ -102,7 +106,7 @@ export default function ImportPage() {
           <div className="bg-zinc-900 border border-white/[0.06] rounded-2xl p-12 flex flex-col items-center gap-4">
             <div className="w-10 h-10 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
             <p className="text-sm text-zinc-400 font-medium">Importazione in corso…</p>
-            <p className="text-xs text-zinc-600">I segnalibri verranno arricchiti in background.</p>
+            <p className="text-xs text-zinc-500">I segnalibri verranno arricchiti in background.</p>
           </div>
         )}
 
@@ -142,10 +146,10 @@ export default function ImportPage() {
 
             {/* Actions */}
             <div className="px-6 pb-6 flex gap-3">
-              <button onClick={reset} className="btn-secondary flex-1">
+              <button onClick={reset} className="btn btn-secondary flex-1">
                 Importa altro
               </button>
-              <Link href="/bookmarks" className="btn-primary flex-1">
+              <Link href="/bookmarks" className="btn btn-primary flex-1">
                 Vai ai segnalibri <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
@@ -162,7 +166,7 @@ export default function ImportPage() {
                 <p className="text-sm text-zinc-400 mt-1">{errorMsg}</p>
               </div>
             </div>
-            <button onClick={reset} className="btn-primary bg-red-600 hover:bg-red-500">
+            <button onClick={reset} className="btn btn-danger">
               Riprova
             </button>
           </div>
@@ -172,7 +176,7 @@ export default function ImportPage() {
         {(state === 'idle' || state === 'dragging') && (
           <div className="mt-5 bg-zinc-900 border border-white/[0.06] rounded-2xl p-5">
             <h3 className="text-sm font-semibold text-zinc-300 mb-3 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-zinc-600" />
+              <FileText className="w-4 h-4 text-zinc-500" />
               Come esportare i segnalibri
             </h3>
             <ul className="space-y-2">

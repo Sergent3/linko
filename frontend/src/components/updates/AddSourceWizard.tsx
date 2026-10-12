@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Search, Loader2, Check, ChevronLeft, Rss } from 'lucide-react';
+import { Search, Check, ChevronLeft, Rss, LayoutList } from 'lucide-react';
+import Modal from '@/components/ui/Modal';
 import { watchApi } from '@/lib/api';
 import type { ExtractedItem, FoundFeed, SuggestedArea, WatchSource } from '@/types/api';
 
@@ -14,26 +15,17 @@ interface Props {
 
 type Step = 'url' | 'area' | 'settings';
 
+const STEPS: { id: Step; label: string }[] = [
+  { id: 'url', label: 'Pagina' },
+  { id: 'area', label: 'Cosa monitorare' },
+  { id: 'settings', label: 'Impostazioni' },
+];
+
 const INTERVALS = [
   { value: 60, label: 'Ogni ora' },
   { value: 360, label: 'Ogni 6 ore' },
   { value: 1440, label: 'Ogni giorno' },
 ];
-
-const panel: React.CSSProperties = {
-  background: '#1e293b', border: '1px solid var(--glass-border)', borderRadius: 12,
-  width: 'min(720px, 94vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-  boxShadow: '0 16px 48px rgba(0,0,0,0.5)',
-};
-const input: React.CSSProperties = {
-  width: '100%', background: 'rgba(0,0,0,0.25)', border: '1px solid var(--glass-border)',
-  borderRadius: 8, color: 'var(--text-main)', padding: '9px 12px', fontSize: 13, outline: 'none',
-};
-const label: React.CSSProperties = { display: 'block', fontSize: 12, color: 'var(--text-muted)', margin: '14px 0 6px' };
-const secondaryBtn: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.06)', color: 'var(--text-main)', border: '1px solid var(--glass-border)',
-  borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-};
 
 function hostname(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
@@ -41,13 +33,38 @@ function hostname(url: string) {
 
 function ItemList({ items }: { items: ExtractedItem[] }) {
   return (
-    <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <ul className="flex flex-col gap-1" style={{ listStyle: 'none' }}>
       {items.map((i) => (
-        <li key={i.url} style={{ fontSize: 12, color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          › {i.title}
-        </li>
+        <li key={i.url} className="truncate text-xs text-fg-muted">› {i.title}</li>
       ))}
     </ul>
+  );
+}
+
+/** Opzione selezionabile (feed o area): radio nativo, tutta la card è cliccabile. */
+function Choice({
+  checked, onChange, icon, title, meta, items,
+}: {
+  checked: boolean; onChange: () => void; icon?: React.ReactNode; title: string; meta: string; items: ExtractedItem[];
+}) {
+  return (
+    <label
+      className="flex gap-3 p-3 rounded-[10px] cursor-pointer transition-colors"
+      style={{
+        border: `1px solid ${checked ? 'var(--accent)' : 'var(--border)'}`,
+        background: checked ? 'var(--accent-soft)' : 'var(--bg)',
+      }}
+    >
+      <input type="radio" name="area" checked={checked} onChange={onChange} className="mt-1 accent-[var(--accent)]" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5 text-[13px] font-semibold text-fg-strong mb-1.5">
+          {icon}
+          <span className="truncate">{title}</span>
+          <span className="font-normal text-fg-muted shrink-0">· {meta}</span>
+        </div>
+        <ItemList items={items} />
+      </div>
+    </label>
   );
 }
 
@@ -70,8 +87,10 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
 
   const chosenArea = areas.find((a) => a.selector === selector);
   const visibleAreas = areas.filter((a) => showNav || !a.isNavigation);
+  const stepIndex = STEPS.findIndex((s) => s.id === step);
 
   async function analyze() {
+    if (!url.trim()) return;
     setError('');
     setBusy(true);
     try {
@@ -90,7 +109,7 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
       }
       setStep('area');
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${(err as Error).message}. Controlla l'indirizzo e riprova.`);
     } finally {
       setBusy(false);
     }
@@ -116,8 +135,8 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     setFeedUrl('');
   }
 
-  function chooseFeed(url: string) {
-    setFeedUrl(url);
+  function chooseFeed(u: string) {
+    setFeedUrl(u);
     setSelector('');
   }
 
@@ -151,159 +170,192 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     }
   }
 
+  const spinner = <span className="spinner" style={{ width: 14, height: 14, borderColor: 'rgba(255,255,255,0.3)', borderTopColor: '#fff' }} aria-hidden="true" />;
+
+  const footer = (
+    <>
+      {step !== 'url' && (
+        <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => setStep(step === 'settings' ? 'area' : 'url')} disabled={busy}>
+          <ChevronLeft size={15} aria-hidden="true" /> Indietro
+        </button>
+      )}
+      <button type="button" className="btn btn-secondary" onClick={onClose}>Annulla</button>
+      {step === 'url' && (
+        <button type="button" className="btn btn-primary" onClick={analyze} disabled={busy || !url.trim()}>
+          {busy ? spinner : <Search size={14} aria-hidden="true" />} {busy ? 'Analisi…' : 'Analizza pagina'}
+        </button>
+      )}
+      {step === 'area' && (
+        <button type="button" className="btn btn-primary" onClick={goSettings} disabled={busy || (!selector && !feedUrl)}>Avanti</button>
+      )}
+      {step === 'settings' && (
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !name.trim()}>
+          {busy ? spinner : <Check size={14} aria-hidden="true" />} {busy ? 'Salvataggio…' : 'Salva fonte'}
+        </button>
+      )}
+    </>
+  );
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={panel}>
-        {/* Header */}
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontWeight: 600, fontSize: 15 }}>Aggiungi fonte</span>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {step === 'url' ? '1/3 · Pagina' : step === 'area' ? '2/3 · Cosa monitorare' : '3/3 · Impostazioni'}
-          </span>
-          <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} aria-label="Chiudi">
-            <X size={18} />
-          </button>
-        </div>
+    <Modal title="Aggiungi fonte" onClose={onClose} width={720} dismissOnBackdrop={step === 'url' && !url} footer={footer}>
+      {/* Indicatore dei passi */}
+      <ol className="flex items-center gap-2 mb-5 text-xs" style={{ listStyle: 'none' }} aria-label="Passi">
+        {STEPS.map((s, i) => (
+          <li key={s.id} className="flex items-center gap-2" aria-current={i === stepIndex ? 'step' : undefined}>
+            <span
+              className="w-5 h-5 rounded-full flex items-center justify-center font-semibold tabular-nums"
+              style={{
+                background: i <= stepIndex ? 'var(--accent)' : 'var(--surface-hover)',
+                color: i <= stepIndex ? '#fff' : 'var(--text-faint)',
+              }}
+            >
+              {i < stepIndex ? <Check size={11} aria-hidden="true" /> : i + 1}
+            </span>
+            <span className={i === stepIndex ? 'text-fg-strong font-medium' : 'text-fg-faint'}>{s.label}</span>
+            {i < STEPS.length - 1 && <span className="w-6 h-px bg-line-strong" aria-hidden="true" />}
+          </li>
+        ))}
+      </ol>
 
-        {/* Body */}
-        <div style={{ padding: 18, overflowY: 'auto', flex: 1 }}>
-          {step === 'url' && (
-            <>
-              <label style={label} htmlFor="watch-url">Indirizzo della pagina con gli aggiornamenti</label>
-              <input id="watch-url" style={input} value={url} autoFocus placeholder="https://…"
-                onChange={(e) => setUrl(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && url) analyze(); }} />
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10 }}>
-                Linko scarica la pagina e cerca da solo le liste di elementi (articoli, uscite, thread).
-              </p>
-            </>
-          )}
+      {step === 'url' && (
+        <form onSubmit={(e) => { e.preventDefault(); analyze(); }}>
+          <label className="field-label" htmlFor="watch-url">Indirizzo della pagina con gli aggiornamenti</label>
+          <input
+            id="watch-url"
+            name="url"
+            className="input"
+            type="url"
+            inputMode="url"
+            autoComplete="url"
+            spellCheck={false}
+            data-autofocus
+            value={url}
+            placeholder="https://esempio.it/news…"
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <p className="field-hint">Linko scarica la pagina e cerca da solo feed RSS e liste di elementi (articoli, uscite, thread).</p>
+        </form>
+      )}
 
-          {step === 'area' && (
+      {step === 'area' && (
+        <fieldset>
+          <legend className="sr-only">Cosa monitorare</legend>
+          {feeds.length > 0 && (
             <>
-              {feeds.length > 0 && (
-                <>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Feed trovati · consigliati</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                    {feeds.map((f) => (
-                      <label key={f.url} style={{
-                        display: 'flex', gap: 10, padding: 12, borderRadius: 10, cursor: 'pointer',
-                        border: `1px solid ${feedUrl === f.url ? 'var(--accent)' : 'var(--glass-border)'}`,
-                        background: feedUrl === f.url ? 'rgba(99,102,241,0.12)' : 'rgba(0,0,0,0.15)',
-                      }}>
-                        <input type="radio" name="area" checked={feedUrl === f.url} onChange={() => chooseFeed(f.url)} style={{ marginTop: 3 }} />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Rss size={13} style={{ color: '#fb923c' }} /> {f.title || 'Feed'}
-                            <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {f.itemCount} elementi</span>
-                          </div>
-                          <ItemList items={f.sample.slice(0, 3)} />
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  {visibleAreas.length > 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Oppure un&apos;area della pagina</div>}
-                </>
-              )}
-              {visibleAreas.length === 0 && feeds.length === 0 && (
-                <p style={{ fontSize: 13, color: '#fbbf24' }}>
-                  Nessuna lista trovata automaticamente. Indica l&apos;area con un selettore CSS qui sotto.
-                </p>
-              )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {visibleAreas.map((a) => (
-                  <label key={a.selector} style={{
-                    display: 'flex', gap: 10, padding: 12, borderRadius: 10, cursor: 'pointer',
-                    border: `1px solid ${selector === a.selector ? 'var(--accent)' : 'var(--glass-border)'}`,
-                    background: selector === a.selector ? 'rgba(99,102,241,0.12)' : 'rgba(0,0,0,0.15)',
-                  }}>
-                    <input type="radio" name="area" checked={selector === a.selector} onChange={() => chooseArea(a.selector)} style={{ marginTop: 3 }} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
-                        {a.label} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {a.itemCount} elementi{a.isNavigation ? ' · menu' : ''}</span>
-                      </div>
-                      <ItemList items={a.sample.slice(0, 3)} />
-                    </div>
-                  </label>
+              <h3 className="field-label">Feed trovati · consigliati</h3>
+              <div className="flex flex-col gap-2 mb-5">
+                {feeds.map((f) => (
+                  <Choice
+                    key={f.url}
+                    checked={feedUrl === f.url}
+                    onChange={() => chooseFeed(f.url)}
+                    icon={<Rss size={13} style={{ color: '#fb923c', flexShrink: 0 }} aria-hidden="true" />}
+                    title={f.title || 'Feed'}
+                    meta={`${f.itemCount} elementi`}
+                    items={f.sample.slice(0, 3)}
+                  />
                 ))}
               </div>
-              {areas.some((a) => a.isNavigation) && (
-                <button onClick={() => setShowNav((v) => !v)} style={{ ...secondaryBtn, marginTop: 10, fontSize: 12, padding: '5px 10px' }}>
-                  {showNav ? 'Nascondi menu e piè di pagina' : 'Mostra anche menu e piè di pagina'}
-                </button>
-              )}
-
-              <label style={label} htmlFor="watch-selector">Nessuna è quella giusta? Selettore CSS dell&apos;area</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input id="watch-selector" style={{ ...input, fontFamily: 'monospace' }} value={manualSelector} placeholder="es. #main ul.latest"
-                  onChange={(e) => setManualSelector(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') tryManual(); }} />
-                <button onClick={tryManual} disabled={busy || !manualSelector.trim()} style={secondaryBtn}>
-                  <Search size={14} /> Prova
-                </button>
-              </div>
-              {manualItems && (
-                <div style={{ marginTop: 10, padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.15)', border: '1px solid var(--glass-border)' }}>
-                  {manualItems.length === 0
-                    ? <span style={{ fontSize: 12, color: '#fbbf24' }}>Nessun elemento trovato con questo selettore.</span>
-                    : <><div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>{manualItems.length} elementi trovati{selector === manualSelector.trim() ? ' · selezionato' : ''}</div><ItemList items={manualItems.slice(0, 5)} /></>}
-                </div>
-              )}
+              {visibleAreas.length > 0 && <h3 className="field-label">Oppure un&apos;area della pagina</h3>}
             </>
           )}
-
-          {step === 'settings' && (
-            <>
-              <label style={label} htmlFor="watch-name">Nome</label>
-              <input id="watch-name" style={input} value={name} onChange={(e) => setName(e.target.value)} />
-
-              <label style={label}>Frequenza dei controlli</label>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {INTERVALS.map((i) => (
-                  <button key={i.value} onClick={() => setIntervalMinutes(i.value)}
-                    className={`folder-tab${intervalMinutes === i.value ? ' active' : ''}`} style={{ border: 'none' }}>
-                    {i.label}
-                  </button>
-                ))}
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 15 minuti).
-              </p>
-
-              <label style={label} htmlFor="watch-filter">Filtro (facoltativo)</label>
-              <input id="watch-filter" style={input} value={filter} placeholder='es. docker "zfs pool" -request'
-                onChange={(e) => setFilter(e.target.value)} />
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                Vuoto = tutti gli elementi nuovi. <code>parola</code> nel titolo · <code>&quot;frase esatta&quot;</code> · <code>-parola</code> per escludere
-                {feedUrl && <> · <code>#categoria</code> per le categorie del feed</>}.
-              </p>
-            </>
+          {visibleAreas.length === 0 && feeds.length === 0 && (
+            <p className="text-[13px] mb-3" style={{ color: 'var(--warning)' }}>
+              Nessuna lista trovata automaticamente. Indica l&apos;area con un selettore CSS qui sotto.
+            </p>
           )}
-
-          {error && <p style={{ marginTop: 14, fontSize: 13, color: '#f87171' }}>{error}</p>}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--glass-border)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          {step !== 'url' && (
-            <button style={{ ...secondaryBtn, marginRight: 'auto' }} onClick={() => setStep(step === 'settings' ? 'area' : 'url')} disabled={busy}>
-              <ChevronLeft size={14} /> Indietro
+          <div className="flex flex-col gap-2">
+            {visibleAreas.map((a) => (
+              <Choice
+                key={a.selector}
+                checked={selector === a.selector}
+                onChange={() => chooseArea(a.selector)}
+                icon={<LayoutList size={13} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
+                title={a.label}
+                meta={`${a.itemCount} elementi${a.isNavigation ? ' · menu' : ''}`}
+                items={a.sample.slice(0, 3)}
+              />
+            ))}
+          </div>
+          {areas.some((a) => a.isNavigation) && (
+            <button type="button" className="btn btn-sm btn-ghost mt-2" onClick={() => setShowNav((v) => !v)}>
+              {showNav ? 'Nascondi menu e piè di pagina' : 'Mostra anche menu e piè di pagina'}
             </button>
           )}
-          {step === 'url' && (
-            <button className="btn-add" onClick={analyze} disabled={busy || !url.trim()}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Analizza
+
+          <label className="field-label mt-5" htmlFor="watch-selector">Nessuna è quella giusta? Selettore CSS dell&apos;area</label>
+          <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); tryManual(); }}>
+            <input
+              id="watch-selector"
+              name="selector"
+              className="input font-mono"
+              autoComplete="off"
+              spellCheck={false}
+              value={manualSelector}
+              placeholder="es. #main ul.latest…"
+              onChange={(e) => setManualSelector(e.target.value)}
+            />
+            <button type="submit" className="btn btn-secondary" disabled={busy || !manualSelector.trim()}>
+              <Search size={14} aria-hidden="true" /> Prova
             </button>
+          </form>
+          {manualItems && (
+            <div className="mt-2.5 p-3 rounded-[10px]" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }} aria-live="polite">
+              {manualItems.length === 0
+                ? <span className="text-xs" style={{ color: 'var(--warning)' }}>Nessun elemento trovato con questo selettore: prova un contenitore più ampio.</span>
+                : <>
+                    <div className="text-xs text-fg-muted mb-1.5">{manualItems.length} elementi trovati{selector === manualSelector.trim() ? ' · selezionato' : ''}</div>
+                    <ItemList items={manualItems.slice(0, 5)} />
+                  </>}
+            </div>
           )}
-          {step === 'area' && (
-            <button className="btn-add" onClick={goSettings} disabled={busy || (!selector && !feedUrl)}>Avanti</button>
-          )}
-          {step === 'settings' && (
-            <button className="btn-add" onClick={save} disabled={busy || !name.trim()}>
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />} Salva fonte
-            </button>
-          )}
-        </div>
+        </fieldset>
+      )}
+
+      {step === 'settings' && (
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(); }}>
+          <label className="field-label" htmlFor="watch-name">Nome</label>
+          <input id="watch-name" name="name" className="input" autoComplete="off" data-autofocus value={name} onChange={(e) => setName(e.target.value)} />
+
+          <span className="field-label mt-5" id="watch-interval-label">Frequenza dei controlli</span>
+          <div className="tabs" role="radiogroup" aria-labelledby="watch-interval-label">
+            {INTERVALS.map((i) => (
+              <button
+                key={i.value}
+                type="button"
+                role="radio"
+                aria-checked={intervalMinutes === i.value}
+                className="tab"
+                onClick={() => setIntervalMinutes(i.value)}
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 15 minuti).</p>
+
+          <label className="field-label mt-5" htmlFor="watch-filter">Filtro (facoltativo)</label>
+          <input
+            id="watch-filter"
+            name="filter"
+            className="input"
+            autoComplete="off"
+            spellCheck={false}
+            value={filter}
+            placeholder='es. docker "zfs pool" -request…'
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <p className="field-hint">
+            Vuoto = tutti gli elementi nuovi. <code>parola</code> nel titolo · <code>&quot;frase esatta&quot;</code> · <code>-parola</code> per escludere
+            {feedUrl && <> · <code>#categoria</code> per le categorie del feed</>}.
+          </p>
+          <button type="submit" hidden />
+        </form>
+      )}
+
+      <div aria-live="polite">
+        {error && <div className="alert-error mt-4">{error}</div>}
       </div>
-    </div>
+    </Modal>
   );
 }

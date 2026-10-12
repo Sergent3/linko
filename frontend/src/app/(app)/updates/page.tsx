@@ -1,15 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
-  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, ArrowLeft,
+  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
+import { WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
+import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
 import type { WatchItem, WatchSource } from '@/types/api';
 
 const PAGE_SIZE = 50;
+
+const fmtDay = new Intl.DateTimeFormat('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+const fmtTime = new Intl.DateTimeFormat('it-IT', { hour: '2-digit', minute: '2-digit' });
+const fmtRelative = new Intl.RelativeTimeFormat('it-IT', { numeric: 'auto' });
 
 function dayLabel(iso: string): string {
   const d = new Date(iso);
@@ -17,41 +22,62 @@ function dayLabel(iso: string): string {
   const yesterday = new Date(today.getTime() - 86_400_000);
   if (d.toDateString() === today.toDateString()) return 'Oggi';
   if (d.toDateString() === yesterday.toDateString()) return 'Ieri';
-  return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const s = fmtDay.format(d);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function relative(iso: string | null): string {
   if (!iso) return 'mai';
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (min < 1) return 'adesso';
-  if (min < 60) return `${min} min fa`;
-  if (min < 1440) return `${Math.round(min / 60)} h fa`;
-  return `${Math.round(min / 1440)} g fa`;
+  const min = Math.round((new Date(iso).getTime() - Date.now()) / 60_000);
+  if (Math.abs(min) < 1) return 'adesso';
+  if (Math.abs(min) < 60) return fmtRelative.format(min, 'minute');
+  if (Math.abs(min) < 1440) return fmtRelative.format(Math.round(min / 60), 'hour');
+  return fmtRelative.format(Math.round(min / 1440), 'day');
 }
 
-const iconBtn: React.CSSProperties = {
-  background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-  padding: 5, borderRadius: 6, display: 'flex', alignItems: 'center',
-};
+function every(minutes: number): string {
+  return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
+}
 
 export default function UpdatesPage() {
-  const [sources, setSources] = useState<WatchSource[]>([]);
+  const ui = useUI();
+  const [sources, setSources] = useState<WatchSource[] | null>(null);
   const [items, setItems] = useState<WatchItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [activeSource, setActiveSource] = useState<string | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(true);
+  const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardUrl, setWizardUrl] = useState('');
   const [wizardBookmarkId, setWizardBookmarkId] = useState<string | undefined>();
 
+  // Stato iniziale dall'URL: ?source=…&view=all, oppure apertura del wizard (?add_url=…&bookmark=…)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setActiveSource(params.get('source'));
+    setOnlyUnread(params.get('view') !== 'all');
+    const addUrl = params.get('add_url');
+    if (addUrl) {
+      setWizardUrl(addUrl);
+      setWizardBookmarkId(params.get('bookmark') ?? undefined);
+      setShowWizard(true);
+    }
+    setReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const params = new URLSearchParams();
+    if (activeSource) params.set('source', activeSource);
+    if (!onlyUnread) params.set('view', 'all');
+    const qs = params.toString();
+    window.history.replaceState({}, '', qs ? `/updates?${qs}` : '/updates');
+  }, [ready, activeSource, onlyUnread]);
+
   const loadSources = useCallback(async () => {
-    try { setSources(await watchApi.sources()); } catch { /* ignore */ }
+    try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
   }, []);
 
   const loadItems = useCallback(async (p = 1) => {
@@ -63,33 +89,28 @@ export default function UpdatesPage() {
       setItems((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
       setTotal(res.meta.total);
       setPage(p);
-    } catch { /* ignore */ } finally {
+    } catch {
+      ui.toast('Impossibile caricare gli aggiornamenti. Riprova tra poco.', { kind: 'error' });
+    } finally {
       setLoading(false);
     }
-  }, [activeSource, onlyUnread]);
+  }, [activeSource, onlyUnread, ui]);
 
   useEffect(() => { loadSources(); }, [loadSources]);
-  useEffect(() => { loadItems(1); }, [loadItems]);
+  useEffect(() => { if (ready) loadItems(1); }, [ready, loadItems]);
 
-  // Apertura dal menu di un segnalibro: /updates?add_url=…&bookmark=…
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const addUrl = params.get('add_url');
-    if (addUrl) {
-      setWizardUrl(addUrl);
-      setWizardBookmarkId(params.get('bookmark') ?? undefined);
-      setShowWizard(true);
-      window.history.replaceState({}, '', '/updates');
-    }
-  }, []);
-
-  // Aggiorna periodicamente i contatori mentre la pagina è aperta
   useEffect(() => {
     const t = setInterval(loadSources, 60_000);
     return () => clearInterval(t);
   }, [loadSources]);
 
-  const totalUnread = sources.reduce((s, x) => s + x.unreadCount, 0);
+  const sourceList = sources ?? [];
+  const totalUnread = sourceList.reduce((s, x) => s + x.unreadCount, 0);
+
+  // Allinea il contatore nell'header (solo dopo il primo caricamento)
+  useEffect(() => {
+    if (sources) window.dispatchEvent(new CustomEvent(WATCH_UNREAD_EVENT, { detail: totalUnread }));
+  }, [sources, totalUnread]);
 
   const grouped = useMemo(() => {
     const groups: { day: string; items: WatchItem[] }[] = [];
@@ -104,7 +125,7 @@ export default function UpdatesPage() {
 
   /* ── Azioni elemento ─────────────────────────────────────────────────────── */
   const adjustUnread = (sourceId: string, delta: number) =>
-    setSources((prev) => prev.map((s) => (s.id === sourceId ? { ...s, unreadCount: Math.max(0, s.unreadCount + delta) } : s)));
+    setSources((prev) => prev && prev.map((s) => (s.id === sourceId ? { ...s, unreadCount: Math.max(0, s.unreadCount + delta) } : s)));
 
   async function setRead(item: WatchItem, isRead: boolean) {
     if (item.isRead === isRead) return;
@@ -116,7 +137,22 @@ export default function UpdatesPage() {
   async function hide(item: WatchItem) {
     setItems((prev) => prev.filter((i) => i.id !== item.id));
     if (!item.isRead) adjustUnread(item.sourceId, -1);
-    try { await watchApi.updateItem(item.id, { isHidden: true }); } catch { loadItems(1); loadSources(); }
+    try {
+      await watchApi.updateItem(item.id, { isHidden: true });
+      ui.toast('Elemento nascosto', {
+        action: {
+          label: 'Annulla',
+          onClick: async () => {
+            await watchApi.updateItem(item.id, { isHidden: false }).catch(() => {});
+            loadItems(1);
+            loadSources();
+          },
+        },
+      });
+    } catch {
+      loadItems(1);
+      loadSources();
+    }
   }
 
   async function save(item: WatchItem) {
@@ -124,163 +160,261 @@ export default function UpdatesPage() {
       const updated = await watchApi.saveItem(item.id);
       setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, ...updated, source: i.source } : i)));
       if (!item.isRead) adjustUnread(item.sourceId, -1);
+      ui.toast('Salvato tra i segnalibri');
     } catch (err) {
-      alert((err as Error).message);
+      ui.toast(`Salvataggio non riuscito: ${(err as Error).message}`, { kind: 'error' });
     }
   }
 
-  function open(item: WatchItem) {
-    window.open(item.url, '_blank', 'noopener,noreferrer');
-    setRead(item, true);
-  }
-
   async function readAll() {
-    await watchApi.readAll(activeSource ?? undefined);
-    loadItems(1);
-    loadSources();
+    try {
+      await watchApi.readAll(activeSource ?? undefined);
+      loadItems(1);
+      loadSources();
+    } catch {
+      ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+    }
   }
 
   /* ── Azioni fonte ────────────────────────────────────────────────────────── */
-  const current = sources.find((s) => s.id === activeSource) ?? null;
+  const current = sourceList.find((s) => s.id === activeSource) ?? null;
 
   async function toggleActive(s: WatchSource) {
-    const updated = await watchApi.updateSource(s.id, { isActive: !s.isActive });
-    setSources((prev) => prev.map((x) => (x.id === s.id ? { ...x, ...updated } : x)));
+    try {
+      const updated = await watchApi.updateSource(s.id, { isActive: !s.isActive });
+      setSources((prev) => prev && prev.map((x) => (x.id === s.id ? { ...x, ...updated } : x)));
+      ui.toast(updated.isActive ? 'Fonte riattivata' : 'Fonte sospesa');
+    } catch {
+      ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+    }
   }
 
   async function checkNow(s: WatchSource) {
-    await watchApi.checkNow(s.id);
-    alert('Controllo richiesto: avverrà entro un minuto.');
+    try {
+      await watchApi.checkNow(s.id);
+      ui.toast('Controllo richiesto: avverrà entro un minuto');
+    } catch {
+      ui.toast('Richiesta non riuscita. Riprova.', { kind: 'error' });
+    }
   }
 
   async function remove(s: WatchSource) {
-    if (!confirm(`Eliminare la fonte "${s.name}" e i suoi elementi?`)) return;
-    await watchApi.deleteSource(s.id);
-    setActiveSource(null);
-    loadSources();
+    const ok = await ui.confirm({
+      title: 'Eliminare la fonte?',
+      message: <>La fonte <strong>{s.name}</strong> e tutti i suoi elementi verranno eliminati.</>,
+      confirmLabel: 'Elimina fonte',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await watchApi.deleteSource(s.id);
+      setActiveSource(null);
+      loadSources();
+      ui.toast('Fonte eliminata');
+    } catch {
+      ui.toast('Eliminazione non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  function openWizard() {
+    setWizardUrl('');
+    setWizardBookmarkId(undefined);
+    setShowWizard(true);
   }
 
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
-    <div style={{ minHeight: '100vh', background: '#2b2b2b' }}>
-      <div className="top-header">
-        <Link href="/bookmarks" className="folder-tab" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeft size={14} /> Bookmarks
-        </Link>
-        <span className="page-title" style={{ marginLeft: 12 }}>Aggiornamenti</span>
-
-        <div style={{ display: 'flex', gap: 4, background: 'rgba(0,0,0,0.2)', padding: 4, borderRadius: 8, marginLeft: 16 }}>
-          <button className={`folder-tab ${onlyUnread ? 'active' : ''}`} style={{ margin: 0, border: 'none' }} onClick={() => setOnlyUnread(true)}>Non letti</button>
-          <button className={`folder-tab ${!onlyUnread ? 'active' : ''}`} style={{ margin: 0, border: 'none' }} onClick={() => setOnlyUnread(false)}>Tutti</button>
+    <>
+      <div className="toolbar">
+        <h1 className="page-title mr-2">Aggiornamenti</h1>
+        <div className="tabs" role="tablist" aria-label="Filtro">
+          <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
+          <button type="button" role="tab" className="tab" aria-selected={!onlyUnread} onClick={() => setOnlyUnread(false)}>Tutti</button>
         </div>
-
-        <div style={{ flex: 1 }} />
-        <button className="btn-add" style={{ background: '#444' }} onClick={readAll} title="Segna tutto come letto">
-          <CheckCheck size={13} /> Segna tutto letto
+        <div className="flex-1" />
+        <button type="button" className="btn btn-secondary" onClick={readAll} aria-label="Segna tutto come letto">
+          <CheckCheck size={15} aria-hidden="true" /> <span className="hidden sm:inline">Segna tutto letto</span>
         </button>
-        <button className="btn-add" style={{ marginLeft: 6 }} onClick={() => { setWizardUrl(''); setWizardBookmarkId(undefined); setShowWizard(true); }}>
-          <Plus size={13} /> Fonte
+        <button type="button" className="btn btn-primary" onClick={openWizard}>
+          <Plus size={15} aria-hidden="true" /> Fonte
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, padding: 24, maxWidth: 1400, margin: '0 auto', alignItems: 'flex-start' }}>
+      <div className="flex flex-col md:flex-row gap-4 md:gap-5 px-4 pb-10 mx-auto items-start" style={{ maxWidth: 1400 }}>
         {/* ── Fonti ──────────────────────────────────────────────────────── */}
-        <aside className="widget-card" style={{ width: 280, flexShrink: 0, position: 'sticky', top: 84 }}>
-          <div className="widget-card-header">Fonti</div>
-          <div className="widget-card-body">
-            <div className={`bookmark-item${activeSource === null ? ' active' : ''}`} onClick={() => setActiveSource(null)}
-              style={{ background: activeSource === null ? 'var(--glass-hover)' : undefined }}>
-              <span>Tutte</span>
-              {totalUnread > 0 && <b style={{ fontSize: 11, color: 'var(--accent)' }}>{totalUnread}</b>}
-            </div>
-            {sources.map((s) => (
-              <div key={s.id} className="bookmark-item" onClick={() => setActiveSource(s.id)}
-                style={{ background: activeSource === s.id ? 'var(--glass-hover)' : undefined, opacity: s.isActive ? 1 : 0.5 }}
-                title={s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo: ${relative(s.lastCheckedAt)}`}>
-                {s.status === 'ERROR' && <AlertTriangle size={13} style={{ color: '#f87171', marginRight: 6, flexShrink: 0 }} />}
-                {!s.isActive && <Pause size={13} style={{ color: 'var(--text-muted)', marginRight: 6, flexShrink: 0 }} />}
-                <span>{s.name}</span>
-                {s.unreadCount > 0 && <b style={{ fontSize: 11, color: 'var(--accent)' }}>{s.unreadCount}</b>}
-              </div>
+        <nav aria-label="Fonti" className="card w-full md:w-[280px] md:shrink-0 md:sticky overflow-hidden" style={{ top: 'calc(var(--header-h) + 12px)' }}>
+          <div className="card-header">Fonti</div>
+          <ul className="py-1 max-h-[40vh] md:max-h-[calc(100vh-160px)] overflow-y-auto" style={{ listStyle: 'none', overscrollBehavior: 'contain' }}>
+            <li>
+              <button
+                type="button"
+                className="bookmark-item w-full text-left"
+                style={{ border: 'none', font: 'inherit', cursor: 'pointer' }}
+                aria-current={activeSource === null ? 'true' : undefined}
+                onClick={() => setActiveSource(null)}
+              >
+                <span className="bookmark-title">Tutte le fonti</span>
+                {totalUnread > 0 && <span className="badge">{totalUnread}</span>}
+              </button>
+            </li>
+            {sourceList.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className="bookmark-item w-full text-left"
+                  style={{ border: 'none', font: 'inherit', cursor: 'pointer', opacity: s.isActive ? 1 : 0.55 }}
+                  aria-current={activeSource === s.id ? 'true' : undefined}
+                  title={s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}
+                  onClick={() => setActiveSource(s.id)}
+                >
+                  {s.status === 'ERROR'
+                    ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
+                    : !s.isActive
+                      ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
+                      : s.mode === 'FEED'
+                        ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
+                        : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
+                  <span className="bookmark-title">{s.name}</span>
+                  {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
+                </button>
+              </li>
             ))}
-            {sources.length === 0 && (
-              <p style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)' }}>
-                Nessuna fonte. Aggiungine una con il pulsante “Fonte”.
-              </p>
+            {sources?.length === 0 && (
+              <li className="px-3.5 py-2.5 text-xs text-fg-muted">Nessuna fonte. Aggiungine una con “Fonte”.</li>
             )}
-          </div>
-        </aside>
+          </ul>
+        </nav>
 
         {/* ── Timeline ───────────────────────────────────────────────────── */}
-        <main style={{ flex: 1, minWidth: 0 }}>
+        <section className="flex-1 min-w-0 w-full" aria-label="Elementi">
           {current && (
-            <div className="widget-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{current.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {current.mode === 'FEED' ? 'Feed RSS/Atom' : 'Area della pagina'} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {current.currentIntervalMinutes >= 60 ? `${Math.round(current.currentIntervalMinutes / 60)} h` : `${current.currentIntervalMinutes} min`}
-                  {current.filter && <> · filtro <code>{current.filter}</code></>}
-                </div>
+            <div className="card flex items-center gap-3 flex-wrap px-4 py-3 mb-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-fg-strong truncate">{current.name}</h2>
+                <p className="text-xs text-fg-muted">
+                  {current.mode === 'FEED' ? 'Feed RSS/Atom' : 'Area della pagina'} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {every(current.currentIntervalMinutes)}
+                  {current.filter && <> · filtro <code className="chip">{current.filter}</code></>}
+                </p>
                 {current.status === 'ERROR' && (
-                  <div style={{ fontSize: 12, color: '#f87171', marginTop: 4 }}>
-                    {current.lastError}{!current.isActive && ' — fonte sospesa dopo troppi errori'}
-                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>
+                    {current.lastError}{!current.isActive && ' — fonte sospesa dopo troppi errori: riattivala per riprovare.'}
+                  </p>
                 )}
               </div>
-              <a href={current.url} target="_blank" rel="noopener noreferrer" style={iconBtn} title="Apri la pagina"><ExternalLink size={15} /></a>
-              <button style={iconBtn} onClick={() => checkNow(current)} title="Controlla ora"><RefreshCw size={15} /></button>
-              <button style={iconBtn} onClick={() => toggleActive(current)} title={current.isActive ? 'Sospendi' : 'Riattiva'}>
-                {current.isActive ? <Pause size={15} /> : <Play size={15} />}
-              </button>
-              <button style={{ ...iconBtn, color: '#f87171' }} onClick={() => remove(current)} title="Elimina fonte"><Trash2 size={15} /></button>
+              <div className="flex items-center gap-0.5">
+                <a href={current.url} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label="Apri la pagina" title="Apri la pagina">
+                  <ExternalLink size={16} aria-hidden="true" />
+                </a>
+                <button type="button" className="icon-btn" onClick={() => checkNow(current)} aria-label="Controlla ora" title="Controlla ora">
+                  <RefreshCw size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => toggleActive(current)}
+                  aria-label={current.isActive ? 'Sospendi fonte' : 'Riattiva fonte'}
+                  title={current.isActive ? 'Sospendi' : 'Riattiva'}
+                >
+                  {current.isActive ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                </button>
+                <button type="button" className="icon-btn icon-btn-danger" onClick={() => remove(current)} aria-label="Elimina fonte" title="Elimina fonte">
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
             </div>
           )}
 
           {grouped.map(({ day, items: dayItems }) => (
-            <section key={day} style={{ marginBottom: 18 }}>
-              <h3 style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--text-muted)', margin: '6px 4px 8px' }}>{day}</h3>
-              <div className="widget-card" style={{ marginBottom: 0 }}>
-                {dayItems.map((it) => (
-                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--glass-border)' }}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: it.isRead ? 'transparent' : 'var(--accent)' }} />
-                    <div style={{ minWidth: 0, flex: 1, cursor: 'pointer' }} onClick={() => open(it)}>
-                      <div style={{ fontSize: 13, fontWeight: it.isRead ? 400 : 600, color: it.isRead ? '#cbd5e1' : '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <section key={day} className="mb-5" aria-label={day}>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-faint mx-1 mb-2">{day}</h3>
+              <ul className="card overflow-hidden" style={{ listStyle: 'none' }}>
+                {dayItems.map((it, idx) => (
+                  <li
+                    key={it.id}
+                    className="bookmark-item"
+                    style={{ padding: '10px 6px 10px 14px', borderTop: idx > 0 ? '1px solid var(--border)' : undefined, alignItems: 'flex-start' }}
+                  >
+                    <span
+                      className="mt-1.5 shrink-0 rounded-full"
+                      style={{ width: 7, height: 7, background: it.isRead ? 'transparent' : 'var(--accent)' }}
+                      aria-hidden="true"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={it.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block truncate text-[14px] hover:underline"
+                        style={{ fontWeight: it.isRead ? 400 : 600, color: it.isRead ? 'var(--text-muted)' : 'var(--text-strong)' }}
+                        onClick={() => setRead(it, true)}
+                        onAuxClick={(e) => { if (e.button === 1) setRead(it, true); }}
+                      >
+                        {!it.isRead && <span className="sr-only">Non letto: </span>}
                         {it.title}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                      </a>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-xs text-fg-faint">
                         <span>{it.source.name}</span>
-                        <span>· {timeLabel(it.firstSeenAt)}</span>
-                        {it.kind === 'UPDATED' && <span style={{ color: '#fbbf24' }}>· aggiornato</span>}
-                        {it.matchedTerms.map((t) => (
-                          <span key={t} style={{ background: 'rgba(99,102,241,0.18)', color: '#c7d2fe', borderRadius: 4, padding: '0 5px' }}>{t}</span>
-                        ))}
-                        {it.savedBookmarkId && <span style={{ color: '#34d399' }}>· salvato</span>}
+                        <span aria-hidden="true">·</span>
+                        <time dateTime={it.firstSeenAt} className="tabular-nums">{fmtTime.format(new Date(it.firstSeenAt))}</time>
+                        {it.kind === 'UPDATED' && <span style={{ color: 'var(--warning)' }}>· aggiornato</span>}
+                        {it.matchedTerms.map((t) => <span key={t} className="chip">{t}</span>)}
+                        {it.savedBookmarkId && <span style={{ color: 'var(--success)' }}>· salvato</span>}
                       </div>
                     </div>
-                    <button style={iconBtn} onClick={() => open(it)} title="Apri"><ExternalLink size={14} /></button>
-                    <button style={iconBtn} onClick={() => setRead(it, !it.isRead)} title={it.isRead ? 'Segna come non letto' : 'Segna come letto'}><Check size={14} /></button>
-                    {!it.savedBookmarkId && <button style={iconBtn} onClick={() => save(it)} title="Salva tra i segnalibri"><BookmarkPlus size={14} /></button>}
-                    <button style={iconBtn} onClick={() => hide(it)} title="Nascondi"><EyeOff size={14} /></button>
-                  </div>
+                    <span className="row-actions">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => setRead(it, !it.isRead)}
+                        aria-label={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
+                        title={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
+                      >
+                        {it.isRead ? <Circle size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
+                      </button>
+                      {!it.savedBookmarkId && (
+                        <button type="button" className="icon-btn" onClick={() => save(it)} aria-label="Salva tra i segnalibri" title="Salva tra i segnalibri">
+                          <BookmarkPlus size={15} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button type="button" className="icon-btn" onClick={() => hide(it)} aria-label="Nascondi" title="Nascondi">
+                        <EyeOff size={15} aria-hidden="true" />
+                      </button>
+                    </span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </section>
           ))}
 
           {!loading && items.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '60px 0', color: '#888' }}>
-              {sources.length === 0
-                ? 'Aggiungi una fonte per iniziare a ricevere aggiornamenti.'
-                : onlyUnread ? 'Nessun aggiornamento da leggere.' : 'Nessun elemento ancora.'}
+            <div className="empty-state card">
+              {sourceList.length === 0 ? (
+                <>
+                  <p className="text-fg-strong font-medium mb-1">Nessuna fonte monitorata</p>
+                  <p className="mb-4">Aggiungi un sito o un feed per vedere qui i nuovi contenuti.</p>
+                  <button type="button" className="btn btn-primary" onClick={openWizard}><Plus size={15} aria-hidden="true" /> Aggiungi fonte</button>
+                </>
+              ) : onlyUnread ? (
+                <>
+                  <p className="text-fg-strong font-medium mb-1">Tutto letto</p>
+                  <p>Non ci sono aggiornamenti da leggere.</p>
+                </>
+              ) : 'Nessun elemento ancora: il primo controllo avverrà entro un minuto.'}
             </div>
           )}
-          {loading && <div style={{ textAlign: 'center', padding: 30, color: '#888' }}>Caricamento...</div>}
+          {loading && (
+            <div className="flex justify-center py-8" aria-busy="true">
+              <div className="spinner" aria-label="Caricamento…" />
+            </div>
+          )}
           {!loading && items.length < total && (
-            <div style={{ textAlign: 'center' }}>
-              <button className="btn-add" style={{ display: 'inline-flex', background: '#444' }} onClick={() => loadItems(page + 1)}>Carica altri</button>
+            <div className="text-center">
+              <button type="button" className="btn btn-secondary" onClick={() => loadItems(page + 1)}>
+                Carica altri ({total - items.length})
+              </button>
             </div>
           )}
-        </main>
+        </section>
       </div>
 
       {showWizard && (
@@ -288,9 +422,9 @@ export default function UpdatesPage() {
           initialUrl={wizardUrl}
           bookmarkId={wizardBookmarkId}
           onClose={() => setShowWizard(false)}
-          onCreated={() => { loadSources(); }}
+          onCreated={() => { loadSources(); ui.toast('Fonte aggiunta: il primo controllo avverrà entro un minuto'); }}
         />
       )}
-    </div>
+    </>
   );
 }
