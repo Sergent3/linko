@@ -90,13 +90,30 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
 export async function updateSource(id: string, dto: UpdateSourceDto, userId: string) {
   const source = await assertSource(id, userId);
   const reactivated = dto.isActive === true && !source.isActive;
-  // Cambiare area o filtro equivale a ripartire: si ricontrolla subito
-  const reconfigured = dto.selector !== undefined || dto.filter !== undefined;
+  const { thread, ...fields } = dto;
+
+  // Nuovo bersaglio (pagina, area, feed o discussione)
+  const target = thread
+    ? { mode: 'THREAD' as const, selector: null, feedUrl: null }
+    : dto.feedUrl
+      ? { mode: 'FEED' as const, selector: null, feedUrl: dto.feedUrl }
+      : dto.selector
+        ? { mode: 'AREA' as const, selector: dto.selector, feedUrl: null }
+        : null;
+  const retargeted =
+    (dto.url !== undefined && dto.url !== source.url) ||
+    (target !== null && (target.mode !== source.mode || target.selector !== source.selector || target.feedUrl !== source.feedUrl));
+  // Cambiare bersaglio o filtro equivale a ripartire: si ricontrolla subito
+  const reconfigured = retargeted || (dto.filter !== undefined && dto.filter !== source.filter);
+
   return prisma.watchSource.update({
     where: { id },
     data: {
-      ...dto,
+      ...fields,
+      ...target,
       ...(dto.intervalMinutes !== undefined && { currentIntervalMinutes: dto.intervalMinutes }),
+      // Con un bersaglio nuovo il prossimo controllo fa da punto di partenza: ciò che c'è già non è una novità
+      ...(retargeted && { lastCheckedAt: null, status: 'PENDING' as const }),
       ...((reactivated || reconfigured) && { failCount: 0, lastError: null, nextCheckAt: new Date() }),
     },
   });

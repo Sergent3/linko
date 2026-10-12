@@ -199,6 +199,19 @@ export interface SaveCredentialDto {
   testUrl?: string;
 }
 
+export interface UpdateWatchSourceDto {
+  name?: string;
+  url?: string;
+  selector?: string;
+  feedUrl?: string;
+  /** Passa a seguire le nuove risposte della discussione indicata in url */
+  thread?: boolean;
+  kind?: 'SITE' | 'FORUM';
+  filter?: string;
+  intervalMinutes?: number;
+  isActive?: boolean;
+}
+
 export interface CreateWatchSourceDto {
   name: string;
   url: string;

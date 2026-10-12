@@ -12,6 +12,7 @@ import type {
   WatchItemListResponse,
   WatchPreview,
   WatchSource,
+  UpdateWatchSourceDto,
   SiteCredential,
   CredentialVerification,
   SaveCredentialDto,
@@ -247,7 +248,7 @@ export const watchApi = {
   createSource: (dto: CreateWatchSourceDto) =>
     request<WatchSource>('/watch/sources', { method: 'POST', body: JSON.stringify(dto) }),
 
-  updateSource: (id: string, dto: Partial<Pick<WatchSource, 'name' | 'selector' | 'filter' | 'intervalMinutes' | 'isActive'>>) =>
+  updateSource: (id: string, dto: UpdateWatchSourceDto) =>
     request<WatchSource>(`/watch/sources/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
 
   deleteSource: (id: string) => request<void>(`/watch/sources/${id}`, { method: 'DELETE' }),

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare,
+  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
@@ -82,6 +82,7 @@ export default function UpdatesPage() {
   const [wizardUrl, setWizardUrl] = useState('');
   const [wizardBookmarkId, setWizardBookmarkId] = useState<string | undefined>();
   const [wizardTitle, setWizardTitle] = useState('');
+  const [editingSource, setEditingSource] = useState<WatchSource | null>(null);
 
   // Stato iniziale dall'URL: ?source=…&view=unread, oppure apertura del wizard (?add_url=…&bookmark=…)
   useEffect(() => {
@@ -380,6 +381,15 @@ export default function UpdatesPage() {
                         <span className="row-actions">
                           <button
                             type="button"
+                            className="icon-btn icon-btn-sm"
+                            onClick={() => setEditingSource(s)}
+                            aria-label={`Modifica ${s.name}`}
+                            title="Modifica"
+                          >
+                            <Pencil size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
                             className="icon-btn icon-btn-sm icon-btn-danger"
                             onClick={() => remove(s)}
                             aria-label={`Smetti di seguire ${s.name}`}
@@ -455,6 +465,9 @@ export default function UpdatesPage() {
                 <a href={current.url} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label="Apri la pagina" title="Apri la pagina">
                   <ExternalLink size={16} aria-hidden="true" />
                 </a>
+                <button type="button" className="icon-btn" onClick={() => setEditingSource(current)} aria-label="Modifica fonte" title="Modifica">
+                  <Pencil size={16} aria-hidden="true" />
+                </button>
                 <button type="button" className="icon-btn" onClick={() => checkNow(current)} aria-label="Controlla ora" title="Controlla ora">
                   <RefreshCw size={16} aria-hidden="true" />
                 </button>
@@ -575,6 +588,19 @@ export default function UpdatesPage() {
           bookmarkId={wizardBookmarkId}
           onClose={() => setShowWizard(false)}
           onCreated={() => { loadSources(); ui.toast('Fonte aggiunta: il primo controllo avverrà entro un minuto'); }}
+        />
+      )}
+      {editingSource && (
+        <AddSourceWizard
+          key={editingSource.id}
+          editing={editingSource}
+          sources={sourceList}
+          onClose={() => setEditingSource(null)}
+          onCreated={(updated) => {
+            setSources((prev) => prev && prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)));
+            loadSources();
+            ui.toast('Fonte aggiornata');
+          }}
         />
       )}
     </>

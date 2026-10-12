@@ -34,13 +34,23 @@ export const createSourceSchema = z
     path: ['selector'],
   });
 
-export const updateSourceSchema = z.object({
-  name: z.string().trim().min(1).max(200).optional(),
-  selector: selector.optional(),
-  filter: filter.optional(),
-  intervalMinutes: interval.optional(),
-  isActive: z.boolean().optional(),
-});
+// Cosa monitorare si cambia indicando al massimo uno tra selector, feedUrl e thread
+export const updateSourceSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    url: z.string().url('URL non valido').optional(),
+    selector: selector.optional(),
+    feedUrl: z.string().url('URL del feed non valido').optional(),
+    thread: z.boolean().optional(),
+    kind: z.enum(['SITE', 'FORUM']).optional(),
+    filter: filter.optional(),
+    intervalMinutes: interval.optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length <= 1, {
+    message: 'Indica un\'area (selector), un feed (feedUrl) oppure una discussione (thread), uno solo',
+    path: ['selector'],
+  });
 
 export const listItemsSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon, KeyRound, MessagesSquare } from 'lucide-react';
+import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon, KeyRound, MessagesSquare, Crosshair } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import CredentialForm from './CredentialForm';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -15,6 +15,8 @@ interface Props {
   initialUrl?: string;
   initialTitle?: string;
   bookmarkId?: string;
+  /** Fonte da modificare: il wizard parte dalle impostazioni e salva sulla fonte esistente */
+  editing?: WatchSource;
 }
 
 const MAX_RESULTS = 60;
@@ -106,14 +108,22 @@ function Choice({
   );
 }
 
-export default function AddSourceWizard({ onClose, onCreated, sources = [], initialUrl = '', initialTitle = '', bookmarkId: initialBookmarkId }: Props) {
-  const [step, setStep] = useState<Step>('url');
-  const [url, setUrl] = useState(initialUrl);
+function targetLabel(s: WatchSource): string {
+  if (s.mode === 'THREAD') return 'Nuove risposte della discussione';
+  if (s.mode === 'FEED') return `Feed ${s.feedUrl ?? ''}`;
+  return `Area della pagina (${s.selector ?? ''})`;
+}
+
+export default function AddSourceWizard({ onClose, onCreated, sources = [], initialUrl = '', initialTitle = '', bookmarkId: initialBookmarkId, editing }: Props) {
+  const [step, setStep] = useState<Step>(editing ? 'settings' : 'url');
+  const [url, setUrl] = useState(editing?.url ?? initialUrl);
+  // In modifica: true quando l'utente ha rianalizzato la pagina per cambiare cosa monitorare
+  const [retarget, setRetarget] = useState(false);
   const [bookmarkId, setBookmarkId] = useState<string | undefined>(initialBookmarkId);
   const [bookmarkTitle, setBookmarkTitle] = useState(initialTitle);
   const [allBookmarks, setAllBookmarks] = useState<Bookmark[] | null>(null);
   const [query, setQuery] = useState('');
-  const [manualMode, setManualMode] = useState(false);
+  const [manualMode, setManualMode] = useState(!!editing);
   const [finalUrl, setFinalUrl] = useState('');
   const [areas, setAreas] = useState<SuggestedArea[]>([]);
   const [feeds, setFeeds] = useState<FoundFeed[]>([]);
@@ -124,10 +134,10 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [selector, setSelector] = useState('');
   const [manualSelector, setManualSelector] = useState('');
   const [manualItems, setManualItems] = useState<ExtractedItem[] | null>(null);
-  const [name, setName] = useState('');
-  const [filter, setFilter] = useState('');
-  const [intervalMinutes, setIntervalMinutes] = useState(DEFAULT_SITE_INTERVAL);
-  const [forum, setForum] = useState<string | null>(null);
+  const [name, setName] = useState(editing?.name ?? '');
+  const [filter, setFilter] = useState(editing?.filter ?? '');
+  const [intervalMinutes, setIntervalMinutes] = useState(editing?.intervalMinutes ?? DEFAULT_SITE_INTERVAL);
+  const [forum, setForum] = useState<string | null>(editing?.kind === 'FORUM' ? 'forum' : null);
   const [auth, setAuth] = useState<WatchPreview['auth']>();
   // Mostra il modulo per incollare il cookie (sito bloccato o pagine riservate)
   const [showLogin, setShowLogin] = useState(false);
@@ -147,7 +157,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
 
   // Aperto da un segnalibro: si analizza subito la sua pagina
   useEffect(() => {
-    if (initialUrl) analyze(initialUrl);
+    if (initialUrl && !editing) analyze(initialUrl);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isFollowed = (b: Bookmark) => sources.some((s) => s.bookmarkId === b.id || sameUrl(s.url, b.url));
@@ -179,14 +189,29 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       setShowLogin(false);
       setForum(res.forum ?? null);
       setAuth(res.auth);
-      setIntervalMinutes(res.forum ? DEFAULT_FORUM_INTERVAL : DEFAULT_SITE_INTERVAL);
+      if (!editing) setIntervalMinutes(res.forum ? DEFAULT_FORUM_INTERVAL : DEFAULT_SITE_INTERVAL);
       setFinalUrl(res.finalUrl);
       setAreas(res.areas);
       setFeeds(res.feeds);
       setThread(res.thread);
-      setFollowThread(!!res.thread);
-      // Il feed, quando c'è, è più affidabile di un'area della pagina
-      if (res.feeds.length > 0) {
+      setFollowThread(!!res.thread && (!editing || editing.mode === 'THREAD'));
+      if (editing) setRetarget(true);
+      // In modifica si ripropone la scelta attuale, se è ancora valida sulla stessa pagina
+      if (editing && sameUrl(res.finalUrl, editing.url) && editing.mode !== 'THREAD') {
+        if (editing.mode === 'FEED' && editing.feedUrl) {
+          const fu = editing.feedUrl;
+          if (!res.feeds.some((f) => f.url === fu)) setFeeds([{ url: fu, title: 'Feed attuale', itemCount: 0, sample: [] }, ...res.feeds]);
+          setFeedUrl(fu);
+          setSelector('');
+        } else if (editing.selector) {
+          setSelector(editing.selector);
+          setFeedUrl('');
+          if (!res.areas.some((a) => a.selector === editing.selector)) setManualSelector(editing.selector);
+        }
+      } else if (res.thread && (!editing || editing.mode === 'THREAD')) {
+        setFeedUrl('');
+        setSelector('');
+      } else if (res.feeds.length > 0) {
         setFeedUrl(res.feeds[0].url);
         setSelector('');
       } else {
@@ -233,6 +258,8 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   }
 
   function goSettings() {
+    // In modifica il nome scelto dall'utente resta
+    if (editing) { setStep('settings'); return; }
     if (followThread && thread) {
       setName(thread.title || bookmarkTitle.trim() || hostname(thread.url));
       setStep('settings');
@@ -252,6 +279,21 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     setError('');
     setBusy(true);
     try {
+      if (editing) {
+        const updated = await watchApi.updateSource(editing.id, {
+          name: name.trim(),
+          filter: filter.trim(),
+          intervalMinutes,
+          ...(retarget && {
+            url: finalUrl || url.trim(),
+            kind: forum ? 'FORUM' as const : 'SITE' as const,
+            ...(followThread ? { thread: true } : feedUrl ? { feedUrl } : { selector }),
+          }),
+        });
+        onCreated(updated);
+        onClose();
+        return;
+      }
       const source = await watchApi.createSource({
         name: name.trim(),
         url: finalUrl || url.trim(),
@@ -274,7 +316,12 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
 
   const footer = (
     <>
-      {step !== 'url' && (
+      {editing && step === 'url' && (
+        <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => { setError(''); setShowLogin(false); setStep('settings'); }} disabled={busy}>
+          <ChevronLeft size={15} aria-hidden="true" /> Indietro
+        </button>
+      )}
+      {step !== 'url' && !(editing && step === 'settings' && !retarget) && (
         <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => { setError(''); setStep(step === 'settings' ? 'area' : 'url'); }} disabled={busy}>
           <ChevronLeft size={15} aria-hidden="true" /> Indietro
         </button>
@@ -290,14 +337,14 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       )}
       {step === 'settings' && (
         <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !name.trim()}>
-          {busy ? spinner : <Check size={14} aria-hidden="true" />} {busy ? 'Salvataggio…' : 'Salva fonte'}
+          {busy ? spinner : <Check size={14} aria-hidden="true" />} {busy ? 'Salvataggio…' : editing ? 'Salva modifiche' : 'Salva fonte'}
         </button>
       )}
     </>
   );
 
   return (
-    <Modal title="Aggiungi fonte" onClose={onClose} width={720} dismissOnBackdrop={step === 'url'} footer={footer}>
+    <Modal title={editing ? `Modifica “${editing.name}”` : 'Aggiungi fonte'} onClose={onClose} width={720} dismissOnBackdrop={!editing && step === 'url'} footer={footer}>
       {/* Indicatore dei passi */}
       <ol className="flex items-center gap-2 mb-5 text-xs" style={{ listStyle: 'none' }} aria-label="Passi">
         {STEPS.map((s, i) => (
@@ -395,7 +442,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       )}
 
       {step === 'url' && !busy && manualMode && (
-        <form onSubmit={(e) => { e.preventDefault(); setBookmarkId(undefined); setBookmarkTitle(''); analyze(); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (!editing) { setBookmarkId(undefined); setBookmarkTitle(''); } analyze(); }}>
           <label className="field-label" htmlFor="watch-url">Indirizzo della pagina con gli aggiornamenti</label>
           <input
             id="watch-url"
@@ -411,7 +458,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
             onChange={(e) => setUrl(e.target.value)}
           />
           <p className="field-hint">Linko scarica la pagina e cerca da solo feed RSS e liste di elementi (articoli, uscite, thread).</p>
-          {allBookmarks && allBookmarks.length > 0 && (
+          {!editing && allBookmarks && allBookmarks.length > 0 && (
             <button type="button" className="btn btn-sm btn-ghost mt-3" onClick={() => setManualMode(false)}>
               <ChevronLeft size={14} aria-hidden="true" /> Scegli dai segnalibri
             </button>
@@ -422,7 +469,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       {step === 'area' && (
         <fieldset>
           <legend className="sr-only">Cosa monitorare</legend>
-          {sources.some((x) => (bookmarkId && x.bookmarkId === bookmarkId) || sameUrl(x.url, url) || (finalUrl && sameUrl(x.url, finalUrl))) && (
+          {sources.some((x) => x.id !== editing?.id && ((bookmarkId && x.bookmarkId === bookmarkId) || sameUrl(x.url, url) || (finalUrl && sameUrl(x.url, finalUrl)))) && (
             <p className="text-xs mb-3 px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
               Segui già questo sito: puoi aggiungere un altro feed o un&apos;altra area.
             </p>
@@ -534,6 +581,24 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         </fieldset>
       )}
 
+      {step === 'settings' && editing && (
+        <div className="mb-5 p-3 rounded-[10px] flex items-center gap-3 flex-wrap" style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs text-fg-faint">Cosa monitora</div>
+            <div className="text-[13px] text-fg-strong truncate">
+              {retarget
+                ? followThread ? 'Nuove risposte della discussione' : feedUrl ? `Feed ${feedUrl}` : `Area della pagina (${selector})`
+                : targetLabel(editing)}
+            </div>
+            <div className="text-xs text-fg-muted truncate">{retarget ? finalUrl || url : editing.url}</div>
+            {retarget && <div className="text-xs mt-1" style={{ color: 'var(--accent-text)' }}>Nuova scelta: gli elementi già presenti diventano il punto di partenza.</div>}
+          </div>
+          <button type="button" className="btn btn-sm btn-secondary" onClick={() => { setError(''); setStep('url'); }}>
+            <Crosshair size={14} aria-hidden="true" /> Cambia pagina o area
+          </button>
+        </div>
+      )}
+
       {step === 'settings' && (
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(); }}>
           <label className="field-label" htmlFor="watch-name">Nome</label>
@@ -555,7 +620,9 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
             ))}
           </div>
           <p className="field-hint">
-            {followThread
+            {editing
+              ? ''
+              : followThread
               ? 'Per una discussione è proposto un controllo ogni 30 minuti. '
               : forum
               ? 'Per i forum è proposto un controllo ogni 30 minuti: i thread nuovi arrivano più spesso che sui siti. '
