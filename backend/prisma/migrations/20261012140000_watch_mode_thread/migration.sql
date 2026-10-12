@@ -1,0 +1,1 @@
+ALTER TYPE "WatchMode" ADD VALUE 'THREAD';

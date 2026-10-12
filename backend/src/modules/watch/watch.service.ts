@@ -76,7 +76,7 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
       name: dto.name,
       url: dto.url,
       kind: dto.kind,
-      mode: dto.feedUrl ? 'FEED' : 'AREA',
+      mode: dto.thread ? 'THREAD' : dto.feedUrl ? 'FEED' : 'AREA',
       selector: dto.selector,
       feedUrl: dto.feedUrl,
       filter: dto.filter,

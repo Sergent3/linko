@@ -159,6 +159,7 @@ enum WatchKind {
 enum WatchMode {
   AREA // selettore CSS su pagina HTML
   FEED // feed RSS/Atom
+  THREAD // nuove risposte di una discussione di un forum (ultima pagina)
 }
 
 enum WatchStatus {

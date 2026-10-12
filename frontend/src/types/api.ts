@@ -163,6 +163,8 @@ export interface WatchPreview {
   auth?: { domain: string; state: 'in' | 'out' | 'unknown'; status: number };
   /** Software del forum riconosciuto (XenForo, phpBB…) */
   forum?: string | null;
+  /** L'indirizzo è una discussione: se ne seguono le nuove risposte */
+  thread?: { url: string; title: string; postCount: number; sample: ExtractedItem[] };
 }
 
 export type CredentialStatus = 'UNVERIFIED' | 'OK' | 'EXPIRED';
@@ -202,6 +204,8 @@ export interface CreateWatchSourceDto {
   url: string;
   selector?: string;
   feedUrl?: string;
+  /** Segue le nuove risposte della discussione indicata in url */
+  thread?: boolean;
   kind?: 'SITE' | 'FORUM';
   filter?: string;
   intervalMinutes: number;

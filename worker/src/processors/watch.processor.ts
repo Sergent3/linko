@@ -23,6 +23,7 @@ import { extractItems, suggestAreas, type ExtractedItem, type SuggestedArea } fr
 import { applyFilter, parseFilter } from '../watch/filter';
 import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
 import { detectForum } from '../watch/platform';
+import { latestUrl, parseThread, threadBase } from '../watch/thread';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -58,6 +59,8 @@ export interface PreviewResult {
   auth?: AuthOutcome;
   /** Software del forum riconosciuto (XenForo, phpBB…), null per i siti normali */
   forum?: string | null;
+  /** L'URL è una discussione di un forum: se ne possono seguire le nuove risposte */
+  thread?: { url: string; title: string; postCount: number; sample: ExtractedItem[] };
 }
 
 export interface VerifyResult {
@@ -142,6 +145,17 @@ async function collect(
     if (!feed) throw new Error('L\'indirizzo non restituisce più un feed RSS/Atom');
     // Chiave dal guid/id del feed: resta stabile anche se cambia l'URL dell'articolo
     return feed.items.map((i) => ({ ...i, key: itemKey(i.key) }));
+  }
+
+  if (source.mode === 'THREAD') {
+    const base = threadBase(source.url);
+    if (!base) throw new Error('L\'indirizzo non è più quello di una discussione');
+    const page = await fetchPage(latestUrl(base), auths);
+    await assessAuth(page, auths);
+    if (page.status >= 400) throw new Error(httpErrorMessage(page.status, 'La discussione'));
+    const thread = parseThread(page.html, page.url);
+    if (!thread) throw new Error('Nessun post leggibile nella discussione: potrebbe servire il login o il thread è stato spostato');
+    return thread.posts.map((i) => ({ ...i, key: itemKey(i.url), tags: [] }));
   }
 
   if (!source.selector) throw new Error('Fonte senza area selezionata');
@@ -258,6 +272,20 @@ async function preview(url: string, selector?: string, userId?: string): Promise
   const page = await fetchPage(url, auths);
   const auth = await assessAuth(page, auths);
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
+
+  // Discussione di un forum: si propongono le nuove risposte, lette dall'ultima pagina
+  const base = threadBase(page.url) ?? threadBase(url);
+  if (base && !selector) {
+    const last = await fetchPage(latestUrl(base), auths);
+    const thread = last.status < 400 ? parseThread(last.html, last.url) : null;
+    if (thread) {
+      return {
+        finalUrl: `${base}/`, status: page.status, isFeed: false, feeds: [], areas: [], items: [], auth,
+        forum: detectForum(page.html) ?? 'XenForo',
+        thread: { url: `${base}/`, title: thread.title, postCount: thread.posts.length, sample: thread.posts.slice(-5).reverse() },
+      };
+    }
+  }
 
   // L'utente ha incollato direttamente un feed
   const direct = parseFeed(page.html, page.url);

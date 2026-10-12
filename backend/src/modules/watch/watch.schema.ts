@@ -16,20 +16,21 @@ export const previewSchema = z.object({
   selector: selector.optional(),
 });
 
-// Una fonte segue un'area della pagina (selector) oppure un feed (feedUrl)
+// Una fonte segue un'area della pagina (selector), un feed (feedUrl) o le risposte di una discussione (thread)
 export const createSourceSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     url: z.string().url('URL non valido'),
     selector: selector.optional(),
     feedUrl: z.string().url('URL del feed non valido').optional(),
+    thread: z.boolean().optional(),
     kind: z.enum(['SITE', 'FORUM']).default('SITE'),
     filter: filter.default(''),
     intervalMinutes: interval.default(60),
     bookmarkId: z.string().cuid().optional(),
   })
-  .refine((d) => !!d.selector !== !!d.feedUrl, {
-    message: 'Indica un\'area (selector) oppure un feed (feedUrl), non entrambi',
+  .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length === 1, {
+    message: 'Indica un\'area (selector), un feed (feedUrl) oppure una discussione (thread), uno solo',
     path: ['selector'],
   });
 

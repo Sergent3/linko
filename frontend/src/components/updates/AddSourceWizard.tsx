@@ -118,6 +118,8 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [areas, setAreas] = useState<SuggestedArea[]>([]);
   const [feeds, setFeeds] = useState<FoundFeed[]>([]);
   const [feedUrl, setFeedUrl] = useState('');
+  const [thread, setThread] = useState<WatchPreview['thread']>();
+  const [followThread, setFollowThread] = useState(false);
   const [showNav, setShowNav] = useState(false);
   const [selector, setSelector] = useState('');
   const [manualSelector, setManualSelector] = useState('');
@@ -181,6 +183,8 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       setFinalUrl(res.finalUrl);
       setAreas(res.areas);
       setFeeds(res.feeds);
+      setThread(res.thread);
+      setFollowThread(!!res.thread);
       // Il feed, quando c'è, è più affidabile di un'area della pagina
       if (res.feeds.length > 0) {
         setFeedUrl(res.feeds[0].url);
@@ -219,14 +223,21 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   function chooseArea(sel: string) {
     setSelector(sel);
     setFeedUrl('');
+    setFollowThread(false);
   }
 
   function chooseFeed(u: string) {
     setFeedUrl(u);
     setSelector('');
+    setFollowThread(false);
   }
 
   function goSettings() {
+    if (followThread && thread) {
+      setName(thread.title || bookmarkTitle.trim() || hostname(thread.url));
+      setStep('settings');
+      return;
+    }
     const chosenFeed = feeds.find((f) => f.url === feedUrl);
     const areaName = chosenFeed
       ? chosenFeed.title
@@ -244,7 +255,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       const source = await watchApi.createSource({
         name: name.trim(),
         url: finalUrl || url.trim(),
-        ...(feedUrl ? { feedUrl } : { selector }),
+        ...(followThread ? { thread: true } : feedUrl ? { feedUrl } : { selector }),
         kind: forum ? 'FORUM' : 'SITE',
         filter: filter.trim(),
         intervalMinutes,
@@ -275,7 +286,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         </button>
       )}
       {step === 'area' && (
-        <button type="button" className="btn btn-primary" onClick={goSettings} disabled={busy || (!selector && !feedUrl)}>Avanti</button>
+        <button type="button" className="btn btn-primary" onClick={goSettings} disabled={busy || (!selector && !feedUrl && !followThread)}>Avanti</button>
       )}
       {step === 'settings' && (
         <button type="button" className="btn btn-primary" onClick={save} disabled={busy || !name.trim()}>
@@ -436,6 +447,21 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
               )}
             </div>
           )}
+          {thread && (
+            <div className="mb-5">
+              <h3 className="field-label">Discussione · consigliato</h3>
+              <Choice
+                checked={followThread}
+                onChange={() => { setFollowThread(true); setSelector(''); setFeedUrl(''); }}
+                icon={<MessagesSquare size={13} style={{ color: 'var(--accent-text)', flexShrink: 0 }} aria-hidden="true" />}
+                title={`Nuove risposte in “${thread.title}”`}
+                meta="ultimi post"
+                items={thread.sample.slice(0, 3)}
+              />
+              <p className="field-hint">Linko controlla l&apos;ultima pagina della discussione e ti segnala ogni nuovo post.</p>
+              {visibleAreas.length > 0 && <h3 className="field-label mt-4">Oppure un&apos;area della pagina</h3>}
+            </div>
+          )}
           {feeds.length > 0 && (
             <>
               <h3 className="field-label">Feed trovati · consigliati</h3>
@@ -455,7 +481,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
               {visibleAreas.length > 0 && <h3 className="field-label">Oppure un&apos;area della pagina</h3>}
             </>
           )}
-          {visibleAreas.length === 0 && feeds.length === 0 && (
+          {visibleAreas.length === 0 && feeds.length === 0 && !thread && (
             <p className="text-[13px] mb-3" style={{ color: 'var(--warning)' }}>
               Nessuna lista trovata automaticamente. Indica l&apos;area con un selettore CSS qui sotto.
             </p>
@@ -529,7 +555,9 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
             ))}
           </div>
           <p className="field-hint">
-            {forum
+            {followThread
+              ? 'Per una discussione è proposto un controllo ogni 30 minuti. '
+              : forum
               ? 'Per i forum è proposto un controllo ogni 30 minuti: i thread nuovi arrivano più spesso che sui siti. '
               : ''}
             Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 10 minuti).
