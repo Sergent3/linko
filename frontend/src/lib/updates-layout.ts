@@ -7,6 +7,12 @@ export interface UpdatesLayout {
   /** Larghezza della colonna Fonti su desktop (px) */
   sidebarWidth: number;
   sidebarOpen: boolean;
+  /** Altezza dell'elenco fonti (px); null = automatica */
+  sidebarHeight: number | null;
+  /** La colonna resta ferma mentre si scorre la pagina */
+  sidebarSticky: boolean;
+  /** Nomi delle fonti su più righe invece che troncati */
+  wrapSourceNames: boolean;
   /** La pagina occupa tutta la larghezza dello schermo */
   fullWidth: boolean;
   /** Titoli su più righe invece che troncati */
@@ -17,12 +23,17 @@ export interface UpdatesLayout {
 }
 
 export const SIDEBAR_MIN = 200;
-export const SIDEBAR_MAX = 560;
+export const SIDEBAR_MAX = 720;
+export const LIST_MIN_HEIGHT = 120;
+export const LIST_MAX_HEIGHT = 2000;
 export const SIDEBAR_DEFAULT = 280;
 
 const DEFAULTS: UpdatesLayout = {
   sidebarWidth: SIDEBAR_DEFAULT,
   sidebarOpen: true,
+  sidebarHeight: null,
+  sidebarSticky: false,
+  wrapSourceNames: false,
   fullWidth: false,
   wrapTitles: false,
   compact: false,
@@ -32,6 +43,7 @@ const DEFAULTS: UpdatesLayout = {
 const STORAGE_KEY = 'linko_updates_layout';
 
 export const clampWidth = (w: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(w)));
+export const clampHeight = (h: number) => Math.min(LIST_MAX_HEIGHT, Math.max(LIST_MIN_HEIGHT, Math.round(h)));
 
 export function useUpdatesLayout(): [UpdatesLayout, (patch: Partial<UpdatesLayout>) => void] {
   const [layout, setLayout] = useState<UpdatesLayout>(DEFAULTS);
@@ -42,7 +54,11 @@ export function useUpdatesLayout(): [UpdatesLayout, (patch: Partial<UpdatesLayou
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
       if (saved && typeof saved === 'object') {
         const merged = { ...DEFAULTS, ...saved } as UpdatesLayout;
-        setLayout({ ...merged, sidebarWidth: clampWidth(Number(merged.sidebarWidth) || SIDEBAR_DEFAULT) });
+        setLayout({
+          ...merged,
+          sidebarWidth: clampWidth(Number(merged.sidebarWidth) || SIDEBAR_DEFAULT),
+          sidebarHeight: merged.sidebarHeight == null ? null : clampHeight(Number(merged.sidebarHeight) || LIST_MIN_HEIGHT),
+        });
       }
     } catch { /* storage non disponibile: valori predefiniti */ }
   }, []);

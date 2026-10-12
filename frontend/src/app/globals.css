@@ -524,30 +524,25 @@ h1, h2, h3 { text-wrap: balance; }
     .row-actions { opacity: 1; }
   }
 
-  /* Aggiornamenti: maniglia per ridimensionare la colonna Fonti */
-  .sidebar-resizer {
-    position: relative;
+  /* Aggiornamenti: maniglie per ridimensionare la colonna Fonti (sempre visibili) */
+  .resize-handle {
     flex-shrink: 0;
-    width: 20px;
-    align-self: stretch;
-    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     touch-action: none;
     outline: none;
+    color: var(--text-faint);
   }
-  .sidebar-resizer::after {
-    content: '';
-    position: absolute;
-    top: 8px;
-    bottom: 8px;
-    left: 9px;
-    width: 2px;
-    border-radius: 2px;
-    background: transparent;
-    transition: background 0.12s ease;
-  }
-  .sidebar-resizer:hover::after,
-  .sidebar-resizer:active::after,
-  .sidebar-resizer:focus-visible::after { background: var(--accent); }
+  .resize-handle-x { width: 20px; align-self: stretch; cursor: col-resize; }
+  .resize-handle-y { height: 14px; cursor: row-resize; border-top: 1px solid var(--border); }
+  .resize-grip { border-radius: 3px; background: var(--border-strong); transition: background 0.12s ease; }
+  .resize-handle-x .resize-grip { width: 4px; height: 40px; }
+  .resize-handle-y .resize-grip { width: 40px; height: 4px; }
+  .resize-handle:hover .resize-grip,
+  .resize-handle:active .resize-grip,
+  .resize-handle:focus-visible .resize-grip { background: var(--accent); }
+  .resize-handle-x.md\:flex { align-items: flex-start; padding-top: 40px; }
   .timeline-list > li:first-child { border-top: none !important; }
 
   .bookmarks-grid {

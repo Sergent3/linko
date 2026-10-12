@@ -11,7 +11,9 @@ import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layo
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
 import { groupItems, type ItemGroup } from '@/lib/group-items';
-import { clampWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout } from '@/lib/updates-layout';
+import {
+  clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout,
+} from '@/lib/updates-layout';
 import type { SiteCredential, WatchItem, WatchSource } from '@/types/api';
 
 const PAGE_SIZE = 50;
@@ -68,36 +70,55 @@ function every(minutes: number): string {
   return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
 }
 
-/** Maniglia per allargare o restringere la colonna Fonti (trascina, frecce, doppio clic = predefinita). */
-function SidebarResizer({ width, onChange }: { width: number; onChange: (w: number) => void }) {
-  const start = useRef<{ x: number; w: number } | null>(null);
+/**
+ * Maniglia di ridimensionamento: trascina (mouse o dito), frecce da tastiera,
+ * doppio clic per tornare al valore predefinito.
+ */
+function ResizeHandle({ vertical, value, min, max, label, onChange, onReset, className }: {
+  vertical: boolean;
+  value: number;
+  min: number;
+  max: number;
+  label: string;
+  onChange: (v: number) => void;
+  onReset: () => void;
+  className?: string;
+}) {
+  const start = useRef<{ pos: number; v: number } | null>(null);
+  const pos = (e: React.PointerEvent) => (vertical ? e.clientX : e.clientY);
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
-      aria-label="Larghezza della colonna Fonti"
-      aria-valuemin={SIDEBAR_MIN}
-      aria-valuemax={SIDEBAR_MAX}
-      aria-valuenow={width}
+      aria-orientation={vertical ? 'vertical' : 'horizontal'}
+      aria-label={label}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       tabIndex={0}
-      title="Trascina per ridimensionare · doppio clic per ripristinare"
-      className="sidebar-resizer hidden md:block"
+      title={`${label}: trascina per cambiarla · doppio clic per ripristinare`}
+      className={`resize-handle ${vertical ? 'resize-handle-x' : 'resize-handle-y'} ${className ?? ''}`}
       onPointerDown={(e) => {
+        e.preventDefault();
         e.currentTarget.setPointerCapture(e.pointerId);
-        start.current = { x: e.clientX, w: width };
+        start.current = { pos: pos(e), v: value };
       }}
       onPointerMove={(e) => {
-        if (start.current) onChange(clampWidth(start.current.w + e.clientX - start.current.x));
+        if (start.current) onChange(start.current.v + pos(e) - start.current.pos);
       }}
       onPointerUp={() => { start.current = null; }}
       onPointerCancel={() => { start.current = null; }}
-      onDoubleClick={() => onChange(SIDEBAR_DEFAULT)}
+      onDoubleClick={onReset}
       onKeyDown={(e) => {
-        if (e.key === 'ArrowLeft') { e.preventDefault(); onChange(clampWidth(width - 20)); }
-        if (e.key === 'ArrowRight') { e.preventDefault(); onChange(clampWidth(width + 20)); }
-        if (e.key === 'Home') { e.preventDefault(); onChange(SIDEBAR_DEFAULT); }
+        const step = e.shiftKey ? 80 : 20;
+        const less = vertical ? 'ArrowLeft' : 'ArrowUp';
+        const more = vertical ? 'ArrowRight' : 'ArrowDown';
+        if (e.key === less) { e.preventDefault(); onChange(value - step); }
+        if (e.key === more) { e.preventDefault(); onChange(value + step); }
+        if (e.key === 'Home') { e.preventDefault(); onReset(); }
       }}
-    />
+    >
+      <span className="resize-grip" aria-hidden="true" />
+    </div>
   );
 }
 
@@ -122,6 +143,7 @@ export default function UpdatesPage() {
   const [layout, updateLayout] = useUpdatesLayout();
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const layoutMenuRef = useRef<HTMLDivElement>(null);
+  const sourceListRef = useRef<HTMLUListElement>(null);
   // Gruppi aperti, per giorno + chiave del gruppo
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -563,6 +585,8 @@ export default function UpdatesPage() {
             <div className="menu right-0 mt-2" role="menu" style={{ minWidth: 250 }}>
               {([
                 ['sidebarOpen', 'Mostra la colonna Fonti'],
+                ['sidebarSticky', 'Fonti ferme durante lo scorrimento'],
+                ['wrapSourceNames', 'Nomi delle fonti completi'],
                 ['fullWidth', 'Usa tutta la larghezza'],
                 ['wrapTitles', 'Titoli completi su più righe'],
                 ['compact', 'Vista compatta'],
@@ -584,10 +608,10 @@ export default function UpdatesPage() {
                 type="button"
                 role="menuitem"
                 className="menu-item"
-                onClick={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT })}
-                disabled={layout.sidebarWidth === SIDEBAR_DEFAULT}
+                onClick={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT, sidebarHeight: null })}
+                disabled={layout.sidebarWidth === SIDEBAR_DEFAULT && layout.sidebarHeight == null}
               >
-                <span style={{ width: 15 }} aria-hidden="true" /> Larghezza fonti predefinita
+                <span style={{ width: 15 }} aria-hidden="true" /> Dimensioni fonti predefinite
               </button>
             </div>
           )}
@@ -607,10 +631,11 @@ export default function UpdatesPage() {
         {/* ── Fonti ──────────────────────────────────────────────────────── */}
         {layout.sidebarOpen && (
         <div
-          className="w-full md:w-[var(--sources-w)] md:shrink-0 md:sticky flex items-stretch"
+          className={`w-full md:w-[var(--sources-w)] md:shrink-0 flex items-stretch ${layout.sidebarSticky ? 'md:sticky' : ''}`}
           style={{ top: 'calc(var(--header-h) + 12px)', '--sources-w': `${layout.sidebarWidth}px` } as React.CSSProperties}
         >
-        <nav aria-label="Fonti" className="card flex-1 min-w-0 overflow-hidden">
+        <div className="flex-1 min-w-0">
+        <nav aria-label="Fonti" className="card overflow-hidden">
           <div className="card-header flex items-center">
             <span className="flex-1">Fonti</span>
             <button
@@ -623,7 +648,11 @@ export default function UpdatesPage() {
               <PanelLeftClose size={14} aria-hidden="true" />
             </button>
           </div>
-          <ul className="py-1 max-h-[40vh] md:max-h-[calc(100vh-160px)] overflow-y-auto" style={{ listStyle: 'none', overscrollBehavior: 'contain' }}>
+          <ul
+            ref={sourceListRef}
+            className={`py-1 overflow-y-auto ${layout.sidebarHeight == null ? `max-h-[40vh] ${layout.sidebarSticky ? 'md:max-h-[calc(100vh-200px)]' : 'md:max-h-none'}` : ''}`}
+            style={{ listStyle: 'none', overscrollBehavior: 'contain', height: layout.sidebarHeight ?? undefined }}
+          >
             <li>
               <button
                 type="button"
@@ -679,7 +708,7 @@ export default function UpdatesPage() {
                                   : s.mode === 'THREAD'
                                     ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
                                     : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
-                          <span className="bookmark-title">{s.name}</span>
+                          <span className="bookmark-title" style={layout.wrapSourceNames ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : undefined}>{s.name}</span>
                           {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
                         </button>
                         <span className="row-actions">
@@ -712,8 +741,27 @@ export default function UpdatesPage() {
               <li className="px-3.5 py-2.5 text-xs text-fg-muted">Nessuna fonte. Aggiungine una con “Fonte”.</li>
             )}
           </ul>
+          <ResizeHandle
+            vertical={false}
+            label="Altezza dell'elenco fonti"
+            value={layout.sidebarHeight ?? sourceListRef.current?.clientHeight ?? 400}
+            min={LIST_MIN_HEIGHT}
+            max={LIST_MAX_HEIGHT}
+            onChange={(h) => updateLayout({ sidebarHeight: clampHeight(h) })}
+            onReset={() => updateLayout({ sidebarHeight: null })}
+          />
         </nav>
-        <SidebarResizer width={layout.sidebarWidth} onChange={(w) => updateLayout({ sidebarWidth: w })} />
+        </div>
+        <ResizeHandle
+          vertical
+          className="hidden md:flex"
+          label="Larghezza della colonna Fonti"
+          value={layout.sidebarWidth}
+          min={SIDEBAR_MIN}
+          max={SIDEBAR_MAX}
+          onChange={(w) => updateLayout({ sidebarWidth: clampWidth(w) })}
+          onReset={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT })}
+        />
         </div>
         )}
 
