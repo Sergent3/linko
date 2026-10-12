@@ -9,6 +9,7 @@ import { bookmarksRouter } from './modules/bookmarks/bookmarks.router';
 import { foldersRouter } from './modules/folders/folders.router';
 import { tagsRouter } from './modules/tags/tags.router';
 import { importRouter } from './modules/import/import.router';
+import { watchRouter } from './modules/watch/watch.router';
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use('/api/v1/bookmarks', bookmarksRouter);
 app.use('/api/v1/folders', foldersRouter);
 app.use('/api/v1/tags', tagsRouter);
 app.use('/api/v1/import', importRouter);
+app.use('/api/v1/watch', watchRouter);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {

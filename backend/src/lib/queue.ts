@@ -1,10 +1,11 @@
-import { Queue } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import { redis } from './redis';
 
 export const QUEUE_NAMES = {
   ENRICH: 'linko-enrich',
   HEALTH_CHECK: 'linko-health-check',
   TAG: 'linko-tag',
+  WATCH: 'linko-watch',
 } as const;
 
 const defaultOpts = {
@@ -28,3 +29,8 @@ export const tagQueue = new Queue(QUEUE_NAMES.TAG, {
   connection: redis,
   defaultJobOptions: { ...defaultOpts, attempts: 2 },
 });
+
+// Monitoraggio fonti: il backend non scarica pagine esterne, delega al worker
+// (che applica protezione SSRF e rate limit) e ne attende il risultato.
+export const watchQueue = new Queue(QUEUE_NAMES.WATCH, { connection: redis });
+export const watchQueueEvents = new QueueEvents(QUEUE_NAMES.WATCH, { connection: redis.duplicate() });
