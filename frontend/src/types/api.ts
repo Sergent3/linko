@@ -96,6 +96,7 @@ export interface WatchSource {
   kind: 'SITE' | 'FORUM';
   mode: 'AREA' | 'FEED';
   selector: string | null;
+  feedUrl: string | null;
   filter: string;
   intervalMinutes: number;
   currentIntervalMinutes: number;
@@ -144,9 +145,18 @@ export interface SuggestedArea {
   isNavigation: boolean;
 }
 
+export interface FoundFeed {
+  url: string;
+  title: string;
+  itemCount: number;
+  sample: ExtractedItem[];
+}
+
 export interface WatchPreview {
   finalUrl: string;
   status: number;
+  isFeed: boolean;
+  feeds: FoundFeed[];
   areas: SuggestedArea[];
   items: ExtractedItem[];
 }
@@ -154,7 +164,8 @@ export interface WatchPreview {
 export interface CreateWatchSourceDto {
   name: string;
   url: string;
-  selector: string;
+  selector?: string;
+  feedUrl?: string;
   filter?: string;
   intervalMinutes: number;
   bookmarkId?: string;

@@ -19,6 +19,7 @@ import { prisma } from '../lib/prisma';
 import { fetchPage } from '../watch/http';
 import { extractItems, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
 import { applyFilter, parseFilter } from '../watch/filter';
+import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -34,12 +35,34 @@ export type WatchJobData =
   | { type: 'preview'; url: string; selector?: string }
   | { type: 'cleanup' };
 
+export interface FoundFeed {
+  url: string;
+  title: string;
+  itemCount: number;
+  sample: ExtractedItem[];
+}
+
 export interface PreviewResult {
   finalUrl: string;
   status: number;
+  /** true se l'URL indicato è già un feed. */
+  isFeed: boolean;
+  feeds: FoundFeed[];
   areas: SuggestedArea[];
   items: ExtractedItem[];
 }
+
+/** Elemento candidato, comune a pagine (area) e feed. */
+interface Candidate {
+  key: string;
+  url: string;
+  title: string;
+  publishedAt?: string;
+  tags: string[];
+}
+
+// Tempo massimo dedicato alla ricerca dei feed durante il preview del wizard
+const FEED_DISCOVERY_BUDGET_MS = 15_000;
 
 function itemKey(url: string): string {
   return createHash('sha256').update(url).digest('hex');
@@ -88,6 +111,26 @@ async function tick(queue: Queue): Promise<number> {
 
 // ── check ─────────────────────────────────────────────────────────────────────
 
+/** Scarica la fonte e restituisce gli elementi candidati, prima del filtro. */
+async function collect(source: { mode: string; url: string; selector: string | null; feedUrl: string | null }): Promise<Candidate[]> {
+  if (source.mode === 'FEED') {
+    if (!source.feedUrl) throw new Error('Fonte feed senza URL del feed');
+    const res = await fetchPage(source.feedUrl);
+    if (res.status >= 400) throw new Error(`Feed: HTTP ${res.status}`);
+    const feed = parseFeed(res.html, res.url);
+    if (!feed) throw new Error('L\'indirizzo non restituisce più un feed RSS/Atom');
+    // Chiave dal guid/id del feed: resta stabile anche se cambia l'URL dell'articolo
+    return feed.items.map((i) => ({ ...i, key: itemKey(i.key) }));
+  }
+
+  if (!source.selector) throw new Error('Fonte senza area selezionata');
+  const page = await fetchPage(source.url);
+  if (page.status >= 400) throw new Error(`HTTP ${page.status}`);
+  const found = extractItems(page.html, page.url, source.selector);
+  if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
+  return found.map((i) => ({ ...i, key: itemKey(i.url), tags: [] }));
+}
+
 async function check(sourceId: string): Promise<void> {
   const source = await prisma.watchSource.findUnique({ where: { id: sourceId } });
   if (!source || !source.isActive) return;
@@ -95,25 +138,18 @@ async function check(sourceId: string): Promise<void> {
   const started = Date.now();
   const firstCheck = source.lastCheckedAt === null;
   try {
-    if (source.mode !== 'AREA' || !source.selector) {
-      throw new Error(`Modalità ${source.mode} non ancora supportata`);
-    }
-    const page = await fetchPage(source.url);
-    if (page.status >= 400) throw new Error(`HTTP ${page.status}`);
-
-    const found = extractItems(page.html, page.url, source.selector);
-    if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
+    const found = await collect(source);
 
     const terms = parseFilter(source.filter);
     const matching = found
-      .map((item) => ({ item, result: applyFilter(terms, { title: item.title }) }))
+      .map((item) => ({ item, result: applyFilter(terms, { title: item.title, tags: item.tags }) }))
       .filter((x) => x.result.matched);
 
-    const keys = matching.map((x) => itemKey(x.item.url));
+    const keys = matching.map((x) => x.item.key);
     const existing = new Set(
       (await prisma.watchItem.findMany({ where: { sourceId, key: { in: keys } }, select: { key: true } })).map((i) => i.key),
     );
-    const fresh = matching.filter((x) => !existing.has(itemKey(x.item.url)));
+    const fresh = matching.filter((x) => !existing.has(x.item.key));
     const now = new Date();
 
     await prisma.$transaction([
@@ -121,7 +157,7 @@ async function check(sourceId: string): Promise<void> {
         data: fresh.map(({ item, result }) => ({
           sourceId,
           userId: source.userId,
-          key: itemKey(item.url),
+          key: item.key,
           url: item.url,
           title: item.title,
           publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
@@ -173,12 +209,50 @@ async function check(sourceId: string): Promise<void> {
 async function preview(url: string, selector?: string): Promise<PreviewResult> {
   const page = await fetchPage(url);
   if (page.status >= 400) throw new Error(`La pagina risponde HTTP ${page.status}`);
+
+  // L'utente ha incollato direttamente un feed
+  const direct = parseFeed(page.html, page.url);
+  if (direct) {
+    return {
+      finalUrl: page.url, status: page.status, isFeed: true, areas: [], items: [],
+      feeds: [{ url: page.url, title: direct.title, itemCount: direct.items.length, sample: direct.items.slice(0, 5) }],
+    };
+  }
+
+  if (selector) {
+    return {
+      finalUrl: page.url, status: page.status, isFeed: false, feeds: [], areas: [],
+      items: extractItems(page.html, page.url, selector).slice(0, 50),
+    };
+  }
+
   return {
     finalUrl: page.url,
     status: page.status,
-    areas: selector ? [] : suggestAreas(page.html, page.url),
-    items: selector ? extractItems(page.html, page.url, selector).slice(0, 50) : [],
+    isFeed: false,
+    feeds: await discoverFeeds(page.html, page.url),
+    areas: suggestAreas(page.html, page.url),
+    items: [],
   };
+}
+
+/** Prova i feed dichiarati e i percorsi comuni, entro un tempo massimo. */
+async function discoverFeeds(html: string, pageUrl: string): Promise<FoundFeed[]> {
+  const deadline = Date.now() + FEED_DISCOVERY_BUDGET_MS;
+  const found: FoundFeed[] = [];
+  for (const candidate of feedCandidates(html, pageUrl)) {
+    if (Date.now() > deadline || found.length >= 3) break;
+    try {
+      const res = await fetchPage(candidate);
+      if (res.status >= 400 || !looksLikeFeed(res.html)) continue;
+      const feed = parseFeed(res.html, res.url);
+      if (!feed || feed.items.length === 0 || found.some((f) => f.url === res.url)) continue;
+      found.push({ url: res.url, title: feed.title, itemCount: feed.items.length, sample: feed.items.slice(0, 5) });
+    } catch {
+      // Candidato non raggiungibile: si passa al successivo
+    }
+  }
+  return found;
 }
 
 // ── cleanup ───────────────────────────────────────────────────────────────────

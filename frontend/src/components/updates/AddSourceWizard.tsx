@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Search, Loader2, Check, ChevronLeft } from 'lucide-react';
+import { X, Search, Loader2, Check, ChevronLeft, Rss } from 'lucide-react';
 import { watchApi } from '@/lib/api';
-import type { ExtractedItem, SuggestedArea, WatchSource } from '@/types/api';
+import type { ExtractedItem, FoundFeed, SuggestedArea, WatchSource } from '@/types/api';
 
 interface Props {
   onClose: () => void;
@@ -56,6 +56,8 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
   const [url, setUrl] = useState(initialUrl);
   const [finalUrl, setFinalUrl] = useState('');
   const [areas, setAreas] = useState<SuggestedArea[]>([]);
+  const [feeds, setFeeds] = useState<FoundFeed[]>([]);
+  const [feedUrl, setFeedUrl] = useState('');
   const [showNav, setShowNav] = useState(false);
   const [selector, setSelector] = useState('');
   const [manualSelector, setManualSelector] = useState('');
@@ -76,8 +78,16 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
       const res = await watchApi.preview(url.trim());
       setFinalUrl(res.finalUrl);
       setAreas(res.areas);
-      const first = res.areas.find((a) => !a.isNavigation) ?? res.areas[0];
-      setSelector(first?.selector ?? '');
+      setFeeds(res.feeds);
+      // Il feed, quando c'è, è più affidabile di un'area della pagina
+      if (res.feeds.length > 0) {
+        setFeedUrl(res.feeds[0].url);
+        setSelector('');
+      } else {
+        const first = res.areas.find((a) => !a.isNavigation) ?? res.areas[0];
+        setFeedUrl('');
+        setSelector(first?.selector ?? '');
+      }
       setStep('area');
     } catch (err) {
       setError((err as Error).message);
@@ -93,7 +103,7 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     try {
       const res = await watchApi.preview(finalUrl || url.trim(), manualSelector.trim());
       setManualItems(res.items);
-      if (res.items.length > 0) setSelector(manualSelector.trim());
+      if (res.items.length > 0) chooseArea(manualSelector.trim());
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -101,8 +111,21 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     }
   }
 
+  function chooseArea(sel: string) {
+    setSelector(sel);
+    setFeedUrl('');
+  }
+
+  function chooseFeed(url: string) {
+    setFeedUrl(url);
+    setSelector('');
+  }
+
   function goSettings() {
-    const areaName = chosenArea && !/^[a-z]+(\.|$)/.test(chosenArea.label) ? chosenArea.label : '';
+    const chosenFeed = feeds.find((f) => f.url === feedUrl);
+    const areaName = chosenFeed
+      ? chosenFeed.title
+      : chosenArea && !/^[a-z]+(\.|$)/.test(chosenArea.label) ? chosenArea.label : '';
     setName(`${hostname(finalUrl || url)}${areaName ? ` · ${areaName}` : ''}`);
     setStep('settings');
   }
@@ -112,7 +135,12 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     setBusy(true);
     try {
       const source = await watchApi.createSource({
-        name: name.trim(), url: finalUrl || url.trim(), selector, filter: filter.trim(), intervalMinutes, bookmarkId,
+        name: name.trim(),
+        url: finalUrl || url.trim(),
+        ...(feedUrl ? { feedUrl } : { selector }),
+        filter: filter.trim(),
+        intervalMinutes,
+        bookmarkId,
       });
       onCreated(source);
       onClose();
@@ -153,7 +181,31 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
 
           {step === 'area' && (
             <>
-              {visibleAreas.length === 0 && (
+              {feeds.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Feed trovati · consigliati</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                    {feeds.map((f) => (
+                      <label key={f.url} style={{
+                        display: 'flex', gap: 10, padding: 12, borderRadius: 10, cursor: 'pointer',
+                        border: `1px solid ${feedUrl === f.url ? 'var(--accent)' : 'var(--glass-border)'}`,
+                        background: feedUrl === f.url ? 'rgba(99,102,241,0.12)' : 'rgba(0,0,0,0.15)',
+                      }}>
+                        <input type="radio" name="area" checked={feedUrl === f.url} onChange={() => chooseFeed(f.url)} style={{ marginTop: 3 }} />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Rss size={13} style={{ color: '#fb923c' }} /> {f.title || 'Feed'}
+                            <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {f.itemCount} elementi</span>
+                          </div>
+                          <ItemList items={f.sample.slice(0, 3)} />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  {visibleAreas.length > 0 && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Oppure un&apos;area della pagina</div>}
+                </>
+              )}
+              {visibleAreas.length === 0 && feeds.length === 0 && (
                 <p style={{ fontSize: 13, color: '#fbbf24' }}>
                   Nessuna lista trovata automaticamente. Indica l&apos;area con un selettore CSS qui sotto.
                 </p>
@@ -165,7 +217,7 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
                     border: `1px solid ${selector === a.selector ? 'var(--accent)' : 'var(--glass-border)'}`,
                     background: selector === a.selector ? 'rgba(99,102,241,0.12)' : 'rgba(0,0,0,0.15)',
                   }}>
-                    <input type="radio" name="area" checked={selector === a.selector} onChange={() => setSelector(a.selector)} style={{ marginTop: 3 }} />
+                    <input type="radio" name="area" checked={selector === a.selector} onChange={() => chooseArea(a.selector)} style={{ marginTop: 3 }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
                         {a.label} <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>· {a.itemCount} elementi{a.isNavigation ? ' · menu' : ''}</span>
@@ -221,7 +273,8 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
               <input id="watch-filter" style={input} value={filter} placeholder='es. docker "zfs pool" -request'
                 onChange={(e) => setFilter(e.target.value)} />
               <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
-                Vuoto = tutti gli elementi nuovi. <code>parola</code> nel titolo · <code>&quot;frase esatta&quot;</code> · <code>-parola</code> per escludere.
+                Vuoto = tutti gli elementi nuovi. <code>parola</code> nel titolo · <code>&quot;frase esatta&quot;</code> · <code>-parola</code> per escludere
+                {feedUrl && <> · <code>#categoria</code> per le categorie del feed</>}.
               </p>
             </>
           )}
@@ -242,7 +295,7 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
             </button>
           )}
           {step === 'area' && (
-            <button className="btn-add" onClick={goSettings} disabled={busy || !selector}>Avanti</button>
+            <button className="btn-add" onClick={goSettings} disabled={busy || (!selector && !feedUrl)}>Avanti</button>
           )}
           {step === 'settings' && (
             <button className="btn-add" onClick={save} disabled={busy || !name.trim()}>

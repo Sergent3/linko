@@ -16,14 +16,21 @@ export const previewSchema = z.object({
   selector: selector.optional(),
 });
 
-export const createSourceSchema = z.object({
-  name: z.string().trim().min(1).max(200),
-  url: z.string().url('URL non valido'),
-  selector,
-  filter: filter.default(''),
-  intervalMinutes: interval.default(360),
-  bookmarkId: z.string().cuid().optional(),
-});
+// Una fonte segue un'area della pagina (selector) oppure un feed (feedUrl)
+export const createSourceSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    url: z.string().url('URL non valido'),
+    selector: selector.optional(),
+    feedUrl: z.string().url('URL del feed non valido').optional(),
+    filter: filter.default(''),
+    intervalMinutes: interval.default(360),
+    bookmarkId: z.string().cuid().optional(),
+  })
+  .refine((d) => !!d.selector !== !!d.feedUrl, {
+    message: 'Indica un\'area (selector) oppure un feed (feedUrl), non entrambi',
+    path: ['selector'],
+  });
 
 export const updateSourceSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),

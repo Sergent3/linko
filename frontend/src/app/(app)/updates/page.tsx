@@ -218,7 +218,7 @@ export default function UpdatesPage() {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 600 }}>{current.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Ultimo controllo {relative(current.lastCheckedAt)} · ogni {current.currentIntervalMinutes >= 60 ? `${Math.round(current.currentIntervalMinutes / 60)} h` : `${current.currentIntervalMinutes} min`}
+                  {current.mode === 'FEED' ? 'Feed RSS/Atom' : 'Area della pagina'} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {current.currentIntervalMinutes >= 60 ? `${Math.round(current.currentIntervalMinutes / 60)} h` : `${current.currentIntervalMinutes} min`}
                   {current.filter && <> · filtro <code>{current.filter}</code></>}
                 </div>
                 {current.status === 'ERROR' && (
