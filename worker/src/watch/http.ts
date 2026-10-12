@@ -115,16 +115,33 @@ function parseCookieHeader(header: string): Map<string, string> {
   return jar;
 }
 
+// Domini che di recente hanno chiesto la verifica anti-bot: si va subito col browser
+const BROWSER_MEMORY_MS = 6 * 3_600_000;
+const needsBrowser = new Map<string, number>();
+
+function rememberedBrowser(host: string): boolean {
+  const until = needsBrowser.get(host);
+  if (!until) return false;
+  if (until < Date.now()) { needsBrowser.delete(host); return false; }
+  return true;
+}
+
 /**
  * GET con redirect seguiti a mano, controllando ogni hop.
  * Se il dominio di un hop ha un accesso salvato, invia il suo cookie (e User-Agent);
  * i cookie ricevuti durante la catena di redirect valgono per gli hop successivi.
+ * Se il sito risponde con una verifica anti-bot, la pagina viene aperta nel
+ * browser di riserva (browser.ts), quando è configurato.
  */
 export async function fetchPage(rawUrl: string, auths: SiteAuth[] = []): Promise<FetchedPage> {
   const jars = new Map<string, Map<string, string>>();
   let current = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const url = await assertPublicUrl(current);
+    if (rememberedBrowser(url.hostname)) {
+      const { browserAvailable, fetchWithBrowser } = await import('./browser');
+      if (browserAvailable()) return fetchWithBrowser(url.toString(), auths);
+    }
     const auth = authFor(url.hostname, auths);
     let jar: Map<string, string> | undefined;
     if (auth) {
@@ -156,7 +173,15 @@ export async function fetchPage(rawUrl: string, auths: SiteAuth[] = []): Promise
       current = new URL(res.headers.location, url).toString();
       continue;
     }
-    return { url: url.toString(), status: res.status, html: typeof res.data === 'string' ? res.data : '', authId: auth?.id };
+    const html = typeof res.data === 'string' ? res.data : '';
+    if (res.status >= 400) {
+      const { browserAvailable, fetchWithBrowser, isChallenge } = await import('./browser');
+      if (browserAvailable() && isChallenge(res.status, res.headers as Record<string, unknown>, html)) {
+        needsBrowser.set(url.hostname, Date.now() + BROWSER_MEMORY_MS);
+        return fetchWithBrowser(url.toString(), auths);
+      }
+    }
+    return { url: url.toString(), status: res.status, html, authId: auth?.id };
   }
   throw new Error(`Troppi redirect (>${MAX_REDIRECTS})`);
 }
