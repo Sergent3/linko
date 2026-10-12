@@ -45,24 +45,43 @@ export const tokens = {
 // ── Core fetch wrapper ─────────────────────────────────────────────────────────
 
 let isRefreshing = false;
-let refreshQueue: Array<(token: string) => void> = [];
+let refreshQueue: Array<(token: string | null) => void> = [];
 
-async function doRefresh(): Promise<string> {
-  const raw = await fetch(`${BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: tokens.refresh }),
-  });
-  if (!raw.ok) {
-    tokens.clear();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
-    throw new Error('Session expired');
+/** La sessione è davvero finita (token rifiutato dal server): si torna al login. */
+function endSession(): never {
+  tokens.clear();
+  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
   }
-  const data: AuthResponse = await raw.json();
-  tokens.set(data.accessToken, data.refreshToken);
-  return data.accessToken;
+  throw new Error('Sessione scaduta');
+}
+
+/**
+ * Rinnova l'access token. Le schede aperte si coordinano con un lock: se nel
+ * frattempo un'altra scheda ha già ruotato il refresh token, si usa il suo.
+ * Errori di rete o del server (backend che si riavvia, 502…) NON fanno uscire:
+ * solo un rifiuto esplicito del token (401/403) chiude la sessione.
+ */
+async function doRefresh(): Promise<string> {
+  const used = tokens.refresh;
+  const run = async (): Promise<string> => {
+    const current = tokens.refresh;
+    if (!current) endSession();
+    if (current !== used && tokens.access) return tokens.access!;
+    const raw = await fetch(`${BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: current }),
+    });
+    if (raw.status === 401 || raw.status === 403) endSession();
+    if (!raw.ok) throw new Error('Server non raggiungibile, riprova tra poco');
+    const data: AuthResponse = await raw.json();
+    tokens.set(data.accessToken, data.refreshToken);
+    return data.accessToken;
+  };
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  return locks ? locks.request('linko-refresh', run) : run();
 }
 
 async function request<T>(
@@ -83,25 +102,27 @@ async function request<T>(
 
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401 && retry && tokens.refresh) {
+  if (res.status === 401 && retry && tokens.refresh && !path.startsWith('/auth/')) {
+    let newToken: string | null;
     if (isRefreshing) {
-      const newToken = await new Promise<string>((resolve) => {
-        refreshQueue.push(resolve);
-      });
-      headers['Authorization'] = `Bearer ${newToken}`;
-      return request<T>(path, { ...options, headers }, false);
-    }
-
-    isRefreshing = true;
-    try {
-      const newToken = await doRefresh();
+      newToken = await new Promise<string | null>((resolve) => { refreshQueue.push(resolve); });
+      if (!newToken) throw new Error('Server non raggiungibile, riprova tra poco');
+    } else {
+      isRefreshing = true;
+      try {
+        newToken = await doRefresh();
+      } catch (err) {
+        refreshQueue.forEach((cb) => cb(null));
+        refreshQueue = [];
+        throw err;
+      } finally {
+        isRefreshing = false;
+      }
       refreshQueue.forEach((cb) => cb(newToken));
       refreshQueue = [];
-      headers['Authorization'] = `Bearer ${newToken}`;
-      return request<T>(path, { ...options, headers }, false);
-    } finally {
-      isRefreshing = false;
     }
+    headers['Authorization'] = `Bearer ${newToken}`;
+    return request<T>(path, { ...options, headers }, false);
   }
 
   if (res.status === 204) return undefined as T;

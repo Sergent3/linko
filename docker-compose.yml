@@ -72,7 +72,7 @@ services:
       WATCH_SECRET_KEY: ${WATCH_SECRET_KEY:?WATCH_SECRET_KEY mancante in .env}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       JWT_EXPIRY: ${JWT_EXPIRY:-15m}
-      JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-7}
+      JWT_REFRESH_EXPIRY_DAYS: ${JWT_REFRESH_EXPIRY_DAYS:-365}
       # Forza il binary Prisma per Alpine/musl con OpenSSL 3.x (bypass detection che richiede spawn)
       PRISMA_QUERY_ENGINE_LIBRARY: /app/node_modules/.prisma/client/libquery_engine-linux-musl-openssl-3.0.x.so.node
     ports:

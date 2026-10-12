@@ -9,7 +9,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_EXPIRY: z.string().default('15m'),
-  JWT_REFRESH_EXPIRY_DAYS: z.coerce.number().default(7),
+  JWT_REFRESH_EXPIRY_DAYS: z.coerce.number().default(365),
   // Chiave AES-256 in base64 per i cookie dei siti (SiteCredential)
   WATCH_SECRET_KEY: z.string().min(40),
 });

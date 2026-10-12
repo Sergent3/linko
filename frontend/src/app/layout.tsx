@@ -9,6 +9,8 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 export const metadata: Metadata = {
   title: 'Linko – Bookmarks',
   description: 'I tuoi segnalibri organizzati e accessibili ovunque.',
+  applicationName: 'Linko',
+  appleWebApp: { capable: true, title: 'Linko', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport: Viewport = {

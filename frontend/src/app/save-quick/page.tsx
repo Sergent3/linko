@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { bookmarks, folders as foldersApi, tokens } from '@/lib/api';
 
 interface Folder { id: string; name: string; }
 
@@ -25,18 +26,16 @@ export default function SaveQuickPage() {
 
   /* ── Carica cartelle + controlla se è il primo utilizzo ── */
   useEffect(() => {
-    const token = localStorage.getItem('linko_access');
-    if (!token) {
+    if (!tokens.refresh) {
       setStatus('error');
       setMessage('Non autenticato — accedi a Linko prima di usare il bookmarklet.');
       return;
     }
 
-    const headers = { Authorization: `Bearer ${token}` };
-
+    // Il client API rinnova da solo l'access token scaduto
     Promise.all([
-      fetch('/api/v1/folders', { headers }).then((r) => r.ok ? r.json() : []),
-      fetch('/api/v1/bookmarks?limit=1&page=1', { headers }).then((r) => r.ok ? r.json() : null),
+      foldersApi.list().catch(() => []),
+      bookmarks.list({ limit: 1, page: 1 }).catch(() => null),
     ])
       .then(([folderData, bookmarkData]) => {
         setFolders(folderData ?? []);
@@ -49,8 +48,7 @@ export default function SaveQuickPage() {
   /* ── Salva ── */
   async function save() {
     setStatus('saving');
-    const token = localStorage.getItem('linko_access');
-    if (!token) { notify(false, 'Non autenticato'); return; }
+    if (!tokens.refresh) { notify(false, 'Non autenticato'); return; }
 
     let effectiveTitle = title.trim();
     if (!effectiveTitle) {
@@ -58,16 +56,10 @@ export default function SaveQuickPage() {
     }
 
     try {
-      const res = await fetch('/api/v1/bookmarks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ url, title: effectiveTitle, description: description.trim() || undefined, ...(folderId ? { folderId } : {}) }),
-      });
-
-      if (res.status === 409) { notify(true, 'exists'); return; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await bookmarks.create({ url, title: effectiveTitle, description: description.trim() || undefined, ...(folderId ? { folderId } : {}) });
       notify(true, 'saved');
     } catch (err: unknown) {
+      if ((err as { status?: number }).status === 409) { notify(true, 'exists'); return; }
       notify(false, err instanceof Error ? err.message : 'Errore');
     }
   }

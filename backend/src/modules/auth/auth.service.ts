@@ -10,6 +10,13 @@ import type { RegisterDto, LoginDto } from './auth.schema';
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Finestra in cui un refresh token appena ruotato è ancora accettato: copre due
+ * schede che rinnovano insieme o una risposta persa per strada, che altrimenti
+ * farebbero uscire l'utente.
+ */
+const ROTATION_GRACE_MS = 60_000;
+
 function hashToken(rawToken: string): string {
   return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
@@ -77,14 +84,18 @@ export async function refresh(rawToken: string) {
 
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
   if (!stored) throw new AppError(401, 'Refresh token non valido');
-  if (stored.revokedAt) throw new AppError(401, 'Refresh token non valido');
   if (stored.expiresAt < new Date()) throw new AppError(401, 'Refresh token scaduto');
+  if (stored.revokedAt && Date.now() - stored.revokedAt.getTime() > ROTATION_GRACE_MS) {
+    throw new AppError(401, 'Refresh token non valido');
+  }
 
-  // Token rotation: revoca il vecchio, genera un nuovo
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: { revokedAt: new Date() },
-  });
+  // Token rotation: revoca il vecchio, genera un nuovo (scadenza che scorre a ogni uso)
+  if (!stored.revokedAt) {
+    await prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    });
+  }
 
   const accessToken = generateAccessToken(stored.userId);
   const newRefreshToken = await generateRefreshToken(stored.userId);
@@ -96,10 +107,12 @@ export async function logout(rawToken: string) {
   const tokenHash = hashToken(rawToken);
 
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
-  if (!stored || stored.revokedAt) return; // idempotente
+  if (!stored) return; // idempotente
 
+  // Scadenza immediata: il token di un logout non rientra nella finestra di rotazione
+  const now = new Date();
   await prisma.refreshToken.update({
     where: { id: stored.id },
-    data: { revokedAt: new Date() },
+    data: { revokedAt: stored.revokedAt ?? now, expiresAt: now },
   });
 }

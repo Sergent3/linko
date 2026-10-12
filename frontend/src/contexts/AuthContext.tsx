@@ -31,7 +31,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('linko_user');
-    if (stored && tokens.access) {
+    // Basta il refresh token: l'access token scaduto si rinnova alla prima richiesta
+    if (stored && tokens.refresh) {
       try {
         const u = JSON.parse(stored) as User;
         userRef.current = u;

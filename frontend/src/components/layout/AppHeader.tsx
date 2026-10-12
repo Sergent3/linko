@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Download, KeyRound, LogOut, Rss, Search, Upload, Zap } from 'lucide-react';
+import { Bookmark, Download, KeyRound, LogOut, Rss, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -74,9 +74,8 @@ export default function AppHeader() {
   return (
     <header className="app-header">
       <Link href="/bookmarks" className="flex items-center gap-2 shrink-0" aria-label="Linko, vai ai segnalibri">
-        <span className="w-7 h-7 rounded-lg bg-accent flex items-center justify-center">
-          <Zap size={15} color="#fff" aria-hidden="true" />
-        </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/icons/icon-192.png" alt="" width={28} height={28} className="w-7 h-7 rounded-lg" />
         <span className="hidden sm:inline font-bold text-[15px] text-fg-strong" translate="no">Linko</span>
       </Link>
 
