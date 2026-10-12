@@ -1,14 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
+  ChevronRight, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
+import { groupItems, type ItemGroup } from '@/lib/group-items';
+import { clampWidth, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout } from '@/lib/updates-layout';
 import type { SiteCredential, WatchItem, WatchSource } from '@/types/api';
 
 const PAGE_SIZE = 50;
@@ -65,6 +68,39 @@ function every(minutes: number): string {
   return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
 }
 
+/** Maniglia per allargare o restringere la colonna Fonti (trascina, frecce, doppio clic = predefinita). */
+function SidebarResizer({ width, onChange }: { width: number; onChange: (w: number) => void }) {
+  const start = useRef<{ x: number; w: number } | null>(null);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Larghezza della colonna Fonti"
+      aria-valuemin={SIDEBAR_MIN}
+      aria-valuemax={SIDEBAR_MAX}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Trascina per ridimensionare · doppio clic per ripristinare"
+      className="sidebar-resizer hidden md:block"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, w: width };
+      }}
+      onPointerMove={(e) => {
+        if (start.current) onChange(clampWidth(start.current.w + e.clientX - start.current.x));
+      }}
+      onPointerUp={() => { start.current = null; }}
+      onPointerCancel={() => { start.current = null; }}
+      onDoubleClick={() => onChange(SIDEBAR_DEFAULT)}
+      onKeyDown={(e) => {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); onChange(clampWidth(width - 20)); }
+        if (e.key === 'ArrowRight') { e.preventDefault(); onChange(clampWidth(width + 20)); }
+        if (e.key === 'Home') { e.preventDefault(); onChange(SIDEBAR_DEFAULT); }
+      }}
+    />
+  );
+}
+
 export default function UpdatesPage() {
   const ui = useUI();
   const [sources, setSources] = useState<WatchSource[] | null>(null);
@@ -83,6 +119,21 @@ export default function UpdatesPage() {
   const [wizardBookmarkId, setWizardBookmarkId] = useState<string | undefined>();
   const [wizardTitle, setWizardTitle] = useState('');
   const [editingSource, setEditingSource] = useState<WatchSource | null>(null);
+  const [layout, updateLayout] = useUpdatesLayout();
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
+  // Gruppi aperti, per giorno + chiave del gruppo
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Chiusura del menu Layout con click esterno o Esc
+  useEffect(() => {
+    if (!layoutMenuOpen) return;
+    const onDown = (e: MouseEvent) => { if (!layoutMenuRef.current?.contains(e.target as Node)) setLayoutMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLayoutMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [layoutMenuOpen]);
 
   // Stato iniziale dall'URL: ?source=…&view=unread, oppure apertura del wizard (?add_url=…&bookmark=…)
   useEffect(() => {
@@ -154,15 +205,28 @@ export default function UpdatesPage() {
   }, [sources, totalUnread]);
 
   const grouped = useMemo(() => {
-    const groups: { day: string; items: WatchItem[] }[] = [];
+    const days: { day: string; items: WatchItem[]; groups: ItemGroup[] }[] = [];
     for (const it of items) {
       const day = dayLabel(it.firstSeenAt);
-      const last = groups[groups.length - 1];
+      const last = days[days.length - 1];
       if (last && last.day === day) last.items.push(it);
-      else groups.push({ day, items: [it] });
+      else days.push({ day, items: [it], groups: [] });
     }
-    return groups;
-  }, [items]);
+    for (const d of days) {
+      d.groups = layout.groupSimilar
+        ? groupItems(d.items)
+        : d.items.map((it) => ({ key: it.id, items: [it], thread: false, title: it.title }));
+    }
+    return days;
+  }, [items, layout.groupSimilar]);
+
+  function toggleGroup(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   /* ── Azioni elemento ─────────────────────────────────────────────────────── */
   const adjustUnread = (sourceId: string, delta: number) =>
@@ -173,6 +237,42 @@ export default function UpdatesPage() {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isRead } : i)));
     adjustUnread(item.sourceId, isRead ? -1 : 1);
     try { await watchApi.updateItem(item.id, { isRead }); } catch { loadItems(1); loadSources(); }
+  }
+
+  async function setReadMany(list: WatchItem[], isRead: boolean) {
+    const changed = list.filter((i) => i.isRead !== isRead);
+    if (changed.length === 0) return;
+    const ids = new Set(changed.map((i) => i.id));
+    setItems((prev) => prev.map((i) => (ids.has(i.id) ? { ...i, isRead } : i)));
+    for (const i of changed) adjustUnread(i.sourceId, isRead ? -1 : 1);
+    try {
+      await Promise.all(changed.map((i) => watchApi.updateItem(i.id, { isRead })));
+    } catch {
+      loadItems(1);
+      loadSources();
+    }
+  }
+
+  async function hideMany(list: WatchItem[]) {
+    const ids = new Set(list.map((i) => i.id));
+    setItems((prev) => prev.filter((i) => !ids.has(i.id)));
+    for (const i of list) if (!i.isRead) adjustUnread(i.sourceId, -1);
+    try {
+      await Promise.all(list.map((i) => watchApi.updateItem(i.id, { isHidden: true })));
+      ui.toast(`${list.length} elementi nascosti`, {
+        action: {
+          label: 'Annulla',
+          onClick: async () => {
+            await Promise.all(list.map((i) => watchApi.updateItem(i.id, { isHidden: false }))).catch(() => {});
+            loadItems(1);
+            loadSources();
+          },
+        },
+      });
+    } catch {
+      loadItems(1);
+      loadSources();
+    }
   }
 
   async function hide(item: WatchItem) {
@@ -297,6 +397,136 @@ export default function UpdatesPage() {
     setShowWizard(true);
   }
 
+  /* ── Righe della timeline ────────────────────────────────────────────────── */
+  const rowPad = layout.compact ? '6px 6px 6px 14px' : '10px 6px 10px 14px';
+  const titleClass = `${layout.wrapTitles ? 'block break-words' : 'block truncate'} ${layout.compact ? 'text-[13px]' : 'text-[14px]'} hover:underline`;
+
+  function renderItem(it: WatchItem, nested = false) {
+    return (
+      <li
+        key={it.id}
+        className="bookmark-item"
+        style={{ padding: nested ? rowPad.replace(/14px$/, '38px') : rowPad, borderTop: '1px solid var(--border)', alignItems: 'flex-start' }}
+      >
+        <span
+          className="mt-1.5 shrink-0 rounded-full"
+          style={{ width: 7, height: 7, background: it.isRead ? 'transparent' : 'var(--accent)' }}
+          aria-hidden="true"
+        />
+        <div className="min-w-0 flex-1">
+          <a
+            href={it.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={titleClass}
+            style={{ fontWeight: it.isRead ? 400 : 600, color: it.isRead ? 'var(--text-muted)' : 'var(--text-strong)' }}
+            onClick={() => setRead(it, true)}
+            onAuxClick={(e) => { if (e.button === 1) setRead(it, true); }}
+          >
+            {!it.isRead && <span className="sr-only">Non letto: </span>}
+            {it.title}
+          </a>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-xs text-fg-faint">
+            {!nested && <><span>{it.source.name}</span><span aria-hidden="true">·</span></>}
+            <time dateTime={it.firstSeenAt} className="tabular-nums">{fmtTime.format(new Date(it.firstSeenAt))}</time>
+            {it.kind === 'UPDATED' && <span style={{ color: 'var(--warning)' }}>· aggiornato</span>}
+            {it.matchedTerms.map((t) => <span key={t} className="chip">{t}</span>)}
+            {it.savedBookmarkId && <span style={{ color: 'var(--success)' }}>· salvato</span>}
+          </div>
+        </div>
+        <span className="row-actions">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => setRead(it, !it.isRead)}
+            aria-label={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
+            title={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
+          >
+            {it.isRead ? <Circle size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
+          </button>
+          {!it.savedBookmarkId && (
+            <button type="button" className="icon-btn" onClick={() => save(it)} aria-label="Salva tra i segnalibri" title="Salva tra i segnalibri">
+              <BookmarkPlus size={15} aria-hidden="true" />
+            </button>
+          )}
+          <button type="button" className="icon-btn" onClick={() => hide(it)} aria-label="Nascondi" title="Nascondi">
+            <EyeOff size={15} aria-hidden="true" />
+          </button>
+        </span>
+      </li>
+    );
+  }
+
+  function renderGroup(g: ItemGroup, day: string) {
+    if (g.items.length === 1) return renderItem(g.items[0]);
+    const id = `${day}|${g.key}`;
+    const open = expanded.has(id);
+    const unread = g.items.filter((i) => !i.isRead);
+    // In una discussione si riparte dal primo post non letto; altrimenti il più recente
+    const target = g.thread && unread.length > 0 ? unread[unread.length - 1] : g.items[0];
+    const sourceNames = [...new Set(g.items.map((i) => i.source.name))];
+    const count = g.thread
+      ? `${g.items.length} nuovi post`
+      : `${g.items.length} volte`;
+    return (
+      <li key={g.key} style={{ borderTop: '1px solid var(--border)' }}>
+        <div className="bookmark-item" style={{ padding: rowPad, alignItems: 'flex-start' }}>
+          <span
+            className="mt-1.5 shrink-0 rounded-full"
+            style={{ width: 7, height: 7, background: unread.length > 0 ? 'var(--accent)' : 'transparent' }}
+            aria-hidden="true"
+          />
+          <div className="min-w-0 flex-1">
+            <a
+              href={target.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={titleClass}
+              style={{ fontWeight: unread.length > 0 ? 600 : 400, color: unread.length > 0 ? 'var(--text-strong)' : 'var(--text-muted)' }}
+              onClick={() => setReadMany(g.items, true)}
+              onAuxClick={(e) => { if (e.button === 1) setReadMany(g.items, true); }}
+            >
+              {g.thread && <MessagesSquare size={13} className="inline mr-1.5 -mt-0.5 text-fg-faint" aria-hidden="true" />}
+              {g.title}
+            </a>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-xs text-fg-faint">
+              <button
+                type="button"
+                className="pill"
+                style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 2 }}
+                aria-expanded={open}
+                onClick={() => toggleGroup(id)}
+              >
+                <ChevronRight size={12} aria-hidden="true" style={{ transform: open ? 'rotate(90deg)' : undefined, transition: 'transform .12s' }} />
+                {count}{unread.length > 0 && unread.length < g.items.length && <> · {unread.length} da leggere</>}
+              </button>
+              <span>{sourceNames.join(', ')}</span>
+              <span aria-hidden="true">·</span>
+              <time dateTime={g.items[0].firstSeenAt} className="tabular-nums">
+                {fmtTime.format(new Date(g.items[g.items.length - 1].firstSeenAt))}–{fmtTime.format(new Date(g.items[0].firstSeenAt))}
+              </time>
+            </div>
+          </div>
+          <span className="row-actions">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setReadMany(g.items, unread.length > 0)}
+              aria-label={unread.length > 0 ? 'Segna tutti come letti' : 'Segna tutti come non letti'}
+              title={unread.length > 0 ? 'Segna tutti come letti' : 'Segna tutti come non letti'}
+            >
+              {unread.length > 0 ? <CheckCheck size={15} aria-hidden="true" /> : <Circle size={15} aria-hidden="true" />}
+            </button>
+            <button type="button" className="icon-btn" onClick={() => hideMany(g.items)} aria-label="Nascondi tutti" title="Nascondi tutti">
+              <EyeOff size={15} aria-hidden="true" />
+            </button>
+          </span>
+        </div>
+        {open && <ul style={{ listStyle: 'none' }}>{g.items.map((it) => renderItem(it, true))}</ul>}
+      </li>
+    );
+  }
+
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
     <>
@@ -307,6 +537,61 @@ export default function UpdatesPage() {
           <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
         </div>
         <div className="flex-1" />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => updateLayout({ sidebarOpen: !layout.sidebarOpen })}
+          aria-pressed={layout.sidebarOpen}
+          aria-label={layout.sidebarOpen ? 'Nascondi le fonti' : 'Mostra le fonti'}
+          title={layout.sidebarOpen ? 'Nascondi le fonti' : 'Mostra le fonti'}
+        >
+          {layout.sidebarOpen ? <PanelLeftClose size={16} aria-hidden="true" /> : <PanelLeftOpen size={16} aria-hidden="true" />}
+        </button>
+        <div className="relative" ref={layoutMenuRef}>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-haspopup="menu"
+            aria-expanded={layoutMenuOpen}
+            aria-label="Layout della pagina"
+            title="Layout"
+            onClick={() => setLayoutMenuOpen((o) => !o)}
+          >
+            <SlidersHorizontal size={16} aria-hidden="true" />
+          </button>
+          {layoutMenuOpen && (
+            <div className="menu right-0 mt-2" role="menu" style={{ minWidth: 250 }}>
+              {([
+                ['sidebarOpen', 'Mostra la colonna Fonti'],
+                ['fullWidth', 'Usa tutta la larghezza'],
+                ['wrapTitles', 'Titoli completi su più righe'],
+                ['compact', 'Vista compatta'],
+                ['groupSimilar', 'Accorpa aggiornamenti uguali'],
+              ] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={layout[k]}
+                  className="menu-item"
+                  onClick={() => updateLayout({ [k]: !layout[k] })}
+                >
+                  <Check size={15} aria-hidden="true" style={{ opacity: layout[k] ? 1 : 0 }} /> {label}
+                </button>
+              ))}
+              <div className="menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT })}
+                disabled={layout.sidebarWidth === SIDEBAR_DEFAULT}
+              >
+                <span style={{ width: 15 }} aria-hidden="true" /> Larghezza fonti predefinita
+              </button>
+            </div>
+          )}
+        </div>
         <button type="button" className="btn btn-secondary" onClick={readAll} aria-label="Segna tutto come letto">
           <CheckCheck size={15} aria-hidden="true" /> <span className="hidden sm:inline">Segna tutto letto</span>
         </button>
@@ -315,10 +600,29 @@ export default function UpdatesPage() {
         </button>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 md:gap-5 px-4 pb-10 mx-auto items-start" style={{ maxWidth: 1400 }}>
+      <div
+        className="flex flex-col md:flex-row gap-4 md:gap-0 px-4 pb-10 mx-auto items-start"
+        style={{ maxWidth: layout.fullWidth ? 'none' : 1400 }}
+      >
         {/* ── Fonti ──────────────────────────────────────────────────────── */}
-        <nav aria-label="Fonti" className="card w-full md:w-[280px] md:shrink-0 md:sticky overflow-hidden" style={{ top: 'calc(var(--header-h) + 12px)' }}>
-          <div className="card-header">Fonti</div>
+        {layout.sidebarOpen && (
+        <div
+          className="w-full md:w-[var(--sources-w)] md:shrink-0 md:sticky flex items-stretch"
+          style={{ top: 'calc(var(--header-h) + 12px)', '--sources-w': `${layout.sidebarWidth}px` } as React.CSSProperties}
+        >
+        <nav aria-label="Fonti" className="card flex-1 min-w-0 overflow-hidden">
+          <div className="card-header flex items-center">
+            <span className="flex-1">Fonti</span>
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              onClick={() => updateLayout({ sidebarOpen: false })}
+              aria-label="Nascondi le fonti"
+              title="Nascondi le fonti"
+            >
+              <PanelLeftClose size={14} aria-hidden="true" />
+            </button>
+          </div>
           <ul className="py-1 max-h-[40vh] md:max-h-[calc(100vh-160px)] overflow-y-auto" style={{ listStyle: 'none', overscrollBehavior: 'contain' }}>
             <li>
               <button
@@ -409,6 +713,9 @@ export default function UpdatesPage() {
             )}
           </ul>
         </nav>
+        <SidebarResizer width={layout.sidebarWidth} onChange={(w) => updateLayout({ sidebarWidth: w })} />
+        </div>
+        )}
 
         {/* ── Timeline ───────────────────────────────────────────────────── */}
         <section className="flex-1 min-w-0 w-full" aria-label="Elementi">
@@ -487,64 +794,11 @@ export default function UpdatesPage() {
             </div>
           )}
 
-          {grouped.map(({ day, items: dayItems }) => (
+          {grouped.map(({ day, groups: dayGroups }) => (
             <section key={day} className="mb-5" aria-label={day}>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-faint mx-1 mb-2">{day}</h3>
-              <ul className="card overflow-hidden" style={{ listStyle: 'none' }}>
-                {dayItems.map((it, idx) => (
-                  <li
-                    key={it.id}
-                    className="bookmark-item"
-                    style={{ padding: '10px 6px 10px 14px', borderTop: idx > 0 ? '1px solid var(--border)' : undefined, alignItems: 'flex-start' }}
-                  >
-                    <span
-                      className="mt-1.5 shrink-0 rounded-full"
-                      style={{ width: 7, height: 7, background: it.isRead ? 'transparent' : 'var(--accent)' }}
-                      aria-hidden="true"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <a
-                        href={it.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block truncate text-[14px] hover:underline"
-                        style={{ fontWeight: it.isRead ? 400 : 600, color: it.isRead ? 'var(--text-muted)' : 'var(--text-strong)' }}
-                        onClick={() => setRead(it, true)}
-                        onAuxClick={(e) => { if (e.button === 1) setRead(it, true); }}
-                      >
-                        {!it.isRead && <span className="sr-only">Non letto: </span>}
-                        {it.title}
-                      </a>
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 text-xs text-fg-faint">
-                        <span>{it.source.name}</span>
-                        <span aria-hidden="true">·</span>
-                        <time dateTime={it.firstSeenAt} className="tabular-nums">{fmtTime.format(new Date(it.firstSeenAt))}</time>
-                        {it.kind === 'UPDATED' && <span style={{ color: 'var(--warning)' }}>· aggiornato</span>}
-                        {it.matchedTerms.map((t) => <span key={t} className="chip">{t}</span>)}
-                        {it.savedBookmarkId && <span style={{ color: 'var(--success)' }}>· salvato</span>}
-                      </div>
-                    </div>
-                    <span className="row-actions">
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => setRead(it, !it.isRead)}
-                        aria-label={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
-                        title={it.isRead ? 'Segna come non letto' : 'Segna come letto'}
-                      >
-                        {it.isRead ? <Circle size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
-                      </button>
-                      {!it.savedBookmarkId && (
-                        <button type="button" className="icon-btn" onClick={() => save(it)} aria-label="Salva tra i segnalibri" title="Salva tra i segnalibri">
-                          <BookmarkPlus size={15} aria-hidden="true" />
-                        </button>
-                      )}
-                      <button type="button" className="icon-btn" onClick={() => hide(it)} aria-label="Nascondi" title="Nascondi">
-                        <EyeOff size={15} aria-hidden="true" />
-                      </button>
-                    </span>
-                  </li>
-                ))}
+              <ul className="card overflow-hidden timeline-list" style={{ listStyle: 'none' }}>
+                {dayGroups.map((g) => renderGroup(g, day))}
               </ul>
             </section>
           ))}

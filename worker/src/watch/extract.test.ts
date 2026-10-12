@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as cheerio from 'cheerio';
-import { cssPath, extractItems, suggestAreas } from './extract';
+import { cssPath, extractItems, isActionLink, stableKeyUrl, suggestAreas } from './extract';
 
 const BASE = 'https://example.org/section/';
 
@@ -117,5 +117,21 @@ describe('cssPath', () => {
     const sel = cssPath($, el);
     expect(sel).toBe('#app > ul.list:nth-of-type(2)');
     expect($(sel).get(0)).toBe(el);
+  });
+});
+
+describe('stableKeyUrl / isActionLink', () => {
+  it('toglie i timestamp e i parametri di sessione, lascia invariati gli URL puliti', () => {
+    expect(stableKeyUrl('https://simpcity.cr/forums/-/mark-read?date=1791837841')).toBe('https://simpcity.cr/forums/-/mark-read');
+    expect(stableKeyUrl('https://ex.org/a?id=5&utm_source=x&sid=abc')).toBe('https://ex.org/a?id=5');
+    expect(stableKeyUrl('https://forum.ex.org/viewtopic.php?t=123')).toBe('https://forum.ex.org/viewtopic.php?t=123');
+    expect(stableKeyUrl('https://ex.org/a/b/')).toBe('https://ex.org/a/b/');
+  });
+  it('riconosce i link di servizio dei forum', () => {
+    expect(isActionLink('https://simpcity.cr/forums/-/mark-read?date=1791837841')).toBe(true);
+    expect(isActionLink('https://simpcity.cr/login/')).toBe(true);
+    expect(isActionLink('https://simpcity.cr/misc/style?style_id=1')).toBe(true);
+    expect(isActionLink('https://simpcity.cr/threads/login-issues.12/')).toBe(false);
+    expect(isActionLink('https://simpcity.cr/threads/x.1/post-2')).toBe(false);
   });
 });

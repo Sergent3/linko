@@ -164,7 +164,7 @@ export async function listItems(dto: ListItemsDto, userId: string) {
       orderBy: { firstSeenAt: 'desc' },
       skip: (dto.page - 1) * dto.limit,
       take: dto.limit,
-      include: { source: { select: { id: true, name: true, kind: true } } },
+      include: { source: { select: { id: true, name: true, kind: true, mode: true } } },
     }),
     prisma.watchItem.count({ where }),
   ]);

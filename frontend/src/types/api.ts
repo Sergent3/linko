@@ -123,7 +123,7 @@ export interface WatchItem {
   isHidden: boolean;
   savedBookmarkId: string | null;
   firstSeenAt: string;
-  source: { id: string; name: string; kind: 'SITE' | 'FORUM' };
+  source: { id: string; name: string; kind: 'SITE' | 'FORUM'; mode: 'AREA' | 'FEED' | 'THREAD' };
 }
 
 export interface WatchItemListResponse {

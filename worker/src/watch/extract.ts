@@ -32,6 +32,36 @@ const NAV_TAGS = new Set(['nav', 'header', 'footer']);
 // Parola chiave come token di classe/id, anche dentro nomi composti (p-navSticky, main-menu, sectionLinks)
 const NAV_HINT = /(?:^|[\s_-])(?:nav(?:bar|igation)?|menu|breadcrumbs?|footer|header|pagination|pager|social|share|cookie|sectionLinks)(?=$|[\s_A-Z-])/;
 
+// Link di servizio di forum e CMS (segna come letto, login, stile…): non sono contenuti
+const ACTION_PATH = /\/(?:[^/]*\/)?(?:-\/)?(?:mark-read|mark-forums-read|markread|login|logout|log-out|register|lost-password|misc\/style|misc\/language|misc\/contact|account\/[^?#]*)(?:[/?#]|$)/i;
+const ACTION_QUERY = /[?&](?:do=markread|action=(?:login|logout|register|markread)|_xfToken=)/i;
+
+/** Il link è un'azione del sito (non un contenuto da seguire)? */
+export function isActionLink(url: string): boolean {
+  return ACTION_PATH.test(url) || ACTION_QUERY.test(url);
+}
+
+// Parametri che cambiano a ogni visita senza cambiare il contenuto: sessione e
+// tracciamento sempre; i nomi tipici dei timestamp solo se il valore è un timestamp
+// (phpBB usa ?t= per l'id della discussione)
+const VOLATILE_PARAM = /^(?:sid|phpsessid|_xftoken|utm_[a-z]+|fbclid|gclid)$/i;
+const TIMESTAMP_PARAM = /^(?:date|time|t|ts|timestamp|_|nocache|cb|rand|v)$/i;
+const TIMESTAMP_VALUE = /^\d{10,13}$/;
+
+/**
+ * URL su cui calcolare la chiave di un elemento: senza parametri volatili
+ * (timestamp, sessione, tracciamento). Se non ce ne sono resta identico, così
+ * le chiavi già salvate non cambiano.
+ */
+export function stableKeyUrl(url: string): string {
+  let u: URL;
+  try { u = new URL(url); } catch { return url; }
+  const drop = [...u.searchParams].filter(([k, v]) => VOLATILE_PARAM.test(k) || (TIMESTAMP_PARAM.test(k) && TIMESTAMP_VALUE.test(v))).map(([k]) => k);
+  if (drop.length === 0) return url;
+  for (const k of drop) u.searchParams.delete(k);
+  return u.toString();
+}
+
 function absUrl(href: string | undefined, baseUrl: string): string | null {
   if (!href) return null;
   const h = href.trim();
@@ -59,7 +89,7 @@ function bestLink($: cheerio.CheerioAPI, block: AnyNode, baseUrl: string): Extra
     .each((_, a) => {
       const $a = $(a);
       const url = absUrl($a.attr('href'), baseUrl);
-      if (!url) return;
+      if (!url || isActionLink(url)) return;
       const title = cleanText($a.attr('title') && $a.text().trim().length < MIN_TITLE_LEN ? $a.attr('title')! : $a.text());
       if (title.length < MIN_TITLE_LEN) return;
       if (!best || title.length > best.title.length) best = { title: title.slice(0, 300), url };

@@ -19,7 +19,7 @@ import { Job, Queue } from 'bullmq';
 import { prisma } from '../lib/prisma';
 import { fetchPage, httpErrorMessage, type SiteAuth } from '../watch/http';
 import { assessAuth, AuthExpiredError, expiredAuthFor, expiredMessage, loadAuths, type AuthOutcome } from '../watch/credentials';
-import { extractItems, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
+import { extractItems, stableKeyUrl, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
 import { applyFilter, parseFilter } from '../watch/filter';
 import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
 import { detectForum } from '../watch/platform';
@@ -164,7 +164,7 @@ async function collect(
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
   const found = extractItems(page.html, page.url, source.selector);
   if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
-  return found.map((i) => ({ ...i, key: itemKey(i.url), tags: [] }));
+  return found.map((i) => ({ ...i, key: itemKey(stableKeyUrl(i.url)), tags: [] }));
 }
 
 async function check(sourceId: string): Promise<void> {

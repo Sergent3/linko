@@ -524,6 +524,32 @@ h1, h2, h3 { text-wrap: balance; }
     .row-actions { opacity: 1; }
   }
 
+  /* Aggiornamenti: maniglia per ridimensionare la colonna Fonti */
+  .sidebar-resizer {
+    position: relative;
+    flex-shrink: 0;
+    width: 20px;
+    align-self: stretch;
+    cursor: col-resize;
+    touch-action: none;
+    outline: none;
+  }
+  .sidebar-resizer::after {
+    content: '';
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 9px;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background 0.12s ease;
+  }
+  .sidebar-resizer:hover::after,
+  .sidebar-resizer:active::after,
+  .sidebar-resizer:focus-visible::after { background: var(--accent); }
+  .timeline-list > li:first-child { border-top: none !important; }
+
   .bookmarks-grid {
     columns: 4 300px;
     column-gap: 14px;
