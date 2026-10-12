@@ -10,6 +10,8 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(32),
   JWT_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY_DAYS: z.coerce.number().default(7),
+  // Chiave AES-256 in base64 per i cookie dei siti (SiteCredential)
+  WATCH_SECRET_KEY: z.string().min(40),
 });
 
 const parsed = envSchema.safeParse(process.env);

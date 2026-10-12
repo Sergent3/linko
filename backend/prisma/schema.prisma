@@ -43,6 +43,7 @@ model User {
   refreshTokens RefreshToken[]
   watchSources  WatchSource[]
   watchItems    WatchItem[]
+  siteCredentials SiteCredential[]
 }
 
 model RefreshToken {
@@ -243,4 +244,32 @@ model WatchCheck {
   source WatchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
 
   @@index([sourceId, startedAt])
+}
+
+enum CredentialStatus {
+  UNVERIFIED // appena salvato, non ancora usato
+  OK         // l'ultima richiesta risultava autenticata
+  EXPIRED    // il sito ha rifiutato il cookie o ha mostrato la pagina da ospite
+}
+
+/// Accesso a un sito con login: cookie di sessione (cifrato) usato dal worker
+/// solo per le richieste verso questo dominio e i suoi sottodomini.
+model SiteCredential {
+  id          String    @id @default(cuid())
+  userId      String
+  domain      String    // es. "simpcity.cr", senza "www."
+  cookieEnc   String    // AES-256-GCM: iv.tag.ciphertext in base64
+  cookieNames String[]  // solo i nomi, per mostrarli nell'interfaccia
+  userAgent   String?
+  status      CredentialStatus @default(UNVERIFIED)
+  lastError   String?
+  lastUsedAt  DateTime?
+  lastStatus  Int?      // ultimo codice HTTP ottenuto usando il cookie
+  expiredAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, domain])
 }

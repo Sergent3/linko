@@ -12,6 +12,9 @@ import type {
   WatchItemListResponse,
   WatchPreview,
   WatchSource,
+  SiteCredential,
+  CredentialVerification,
+  SaveCredentialDto,
 } from '@/types/api';
 
 const BASE = '/api/v1';
@@ -267,4 +270,18 @@ export const watchApi = {
     request<{ updated: number }>('/watch/items/read-all', { method: 'POST', body: JSON.stringify({ sourceId }) }),
 
   saveItem: (id: string) => request<WatchItem>(`/watch/items/${id}/save`, { method: 'POST' }),
+
+  // Accessi ai siti con login (cookie di sessione)
+  credentials: () => request<SiteCredential[]>('/watch/credentials'),
+  saveCredential: (dto: SaveCredentialDto) =>
+    request<{ credential: SiteCredential; verification: CredentialVerification }>('/watch/credentials', {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
+  verifyCredential: (id: string, testUrl?: string) =>
+    request<CredentialVerification>(`/watch/credentials/${id}/verify`, {
+      method: 'POST',
+      body: JSON.stringify({ testUrl }),
+    }),
+  deleteCredential: (id: string) => request<void>(`/watch/credentials/${id}`, { method: 'DELETE' }),
 };

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Download, LogOut, Rss, Search, Upload, Zap } from 'lucide-react';
+import { Bookmark, Download, KeyRound, LogOut, Rss, Search, Upload, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -12,6 +12,8 @@ import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
 export const WATCH_UNREAD_EVENT = 'linko:watch-unread';
 /** Evento che apre la ricerca rapida (CommandPalette) della pagina Segnalibri. */
 export const OPEN_PALETTE_EVENT = 'linko:open-palette';
+/** Evento: gli accessi ai siti sono cambiati, ricaricare il conteggio degli scaduti. */
+export const CREDENTIALS_CHANGED_EVENT = 'linko:credentials-changed';
 
 const NAV = [
   { href: '/bookmarks', label: 'Segnalibri', icon: Bookmark },
@@ -23,6 +25,7 @@ export default function AppHeader() {
   const { user, logout } = useAuth();
   const ui = useUI();
   const [unread, setUnread] = useState(0);
+  const [expired, setExpired] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -36,6 +39,17 @@ export default function AppHeader() {
     const onEvent = (e: Event) => setUnread((e as CustomEvent<number>).detail);
     window.addEventListener(WATCH_UNREAD_EVENT, onEvent);
     return () => { clearInterval(t); window.removeEventListener(WATCH_UNREAD_EVENT, onEvent); };
+  }, []);
+
+  // Accessi ai siti scaduti: segnalati sull'avatar e nel menu
+  useEffect(() => {
+    const load = () => watchApi.credentials()
+      .then((list) => setExpired(list.filter((c) => c.status === 'EXPIRED').length))
+      .catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60_000);
+    window.addEventListener(CREDENTIALS_CHANGED_EVENT, load);
+    return () => { clearInterval(t); window.removeEventListener(CREDENTIALS_CHANGED_EVENT, load); };
   }, []);
 
   // Chiusura del menu utente con click esterno o Esc
@@ -100,17 +114,31 @@ export default function AppHeader() {
         <button
           type="button"
           className="w-8 h-8 rounded-full bg-surface-hover border border-line-strong text-fg-strong text-xs font-semibold flex items-center justify-center hover:border-accent transition-colors"
-          aria-label="Menu utente"
+          aria-label={expired > 0 ? `Menu utente: ${expired} accessi scaduti` : 'Menu utente'}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((o) => !o)}
+          style={{ position: 'relative' }}
         >
           {initials}
+          {expired > 0 && (
+            <span
+              aria-hidden="true"
+              className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+              style={{ background: 'var(--danger)', boxShadow: '0 0 0 2px var(--bg)' }}
+            />
+          )}
         </button>
         {menuOpen && (
           <div className="menu right-0 mt-2" role="menu">
             <div className="px-2.5 py-2 text-xs text-fg-faint truncate" title={user?.email}>{user?.email}</div>
             <div className="menu-sep" />
+            <Link href="/access" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+              <KeyRound size={15} aria-hidden="true" /> Accessi ai siti
+              {expired > 0 && (
+                <span className="badge ml-auto" style={{ background: 'var(--danger-strong)' }}>{expired} scadut{expired === 1 ? 'o' : 'i'}</span>
+              )}
+            </Link>
             <Link href="/import" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
               <Upload size={15} aria-hidden="true" /> Importa segnalibri
             </Link>

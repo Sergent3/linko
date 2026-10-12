@@ -88,26 +88,75 @@ export interface FetchedPage {
   url: string;    // URL finale dopo i redirect
   status: number;
   html: string;
+  /** Accesso (cookie) usato per l'ultima richiesta, se il dominio ne aveva uno */
+  authId?: string;
 }
 
-/** GET con redirect seguiti a mano, controllando ogni hop. */
-export async function fetchPage(rawUrl: string): Promise<FetchedPage> {
+/** Cookie di sessione di un sito, già decifrato. */
+export interface SiteAuth {
+  id: string;
+  domain: string;
+  cookie: string;
+  userAgent: string | null;
+}
+
+/** Il cookie di "esempio.it" vale per esempio.it e i suoi sottodomini, mai per altri siti. */
+export function authFor(host: string, auths: SiteAuth[]): SiteAuth | undefined {
+  const h = host.toLowerCase().replace(/\.$/, '');
+  return auths.find((a) => h === a.domain || h.endsWith(`.${a.domain}`));
+}
+
+function parseCookieHeader(header: string): Map<string, string> {
+  const jar = new Map<string, string>();
+  for (const part of header.split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0) jar.set(part.slice(0, i).trim(), part.slice(i + 1).trim());
+  }
+  return jar;
+}
+
+/**
+ * GET con redirect seguiti a mano, controllando ogni hop.
+ * Se il dominio di un hop ha un accesso salvato, invia il suo cookie (e User-Agent);
+ * i cookie ricevuti durante la catena di redirect valgono per gli hop successivi.
+ */
+export async function fetchPage(rawUrl: string, auths: SiteAuth[] = []): Promise<FetchedPage> {
+  const jars = new Map<string, Map<string, string>>();
   let current = rawUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const url = await assertPublicUrl(current);
+    const auth = authFor(url.hostname, auths);
+    let jar: Map<string, string> | undefined;
+    if (auth) {
+      jar = jars.get(auth.id) ?? parseCookieHeader(auth.cookie);
+      jars.set(auth.id, jar);
+    }
+    const headers: Record<string, string> = { ...SCRAPING_HEADERS };
+    if (auth && jar) {
+      headers.Cookie = [...jar].map(([n, v]) => `${n}=${v}`).join('; ');
+      if (auth.userAgent) headers['User-Agent'] = auth.userAgent;
+    }
     const res = await axios.get<string>(url.toString(), {
-      headers: SCRAPING_HEADERS,
+      headers,
       timeout: config.SCRAPING_TIMEOUT_MS,
       maxRedirects: 0,
       maxContentLength: MAX_BYTES,
       responseType: 'text',
       validateStatus: () => true,
     });
+    const setCookie = res.headers['set-cookie'];
+    if (jar && Array.isArray(setCookie)) {
+      for (const c of setCookie) {
+        const first = c.split(';')[0];
+        const i = first.indexOf('=');
+        if (i > 0) jar.set(first.slice(0, i).trim(), first.slice(i + 1).trim());
+      }
+    }
     if (res.status >= 300 && res.status < 400 && res.headers.location) {
       current = new URL(res.headers.location, url).toString();
       continue;
     }
-    return { url: url.toString(), status: res.status, html: typeof res.data === 'string' ? res.data : '' };
+    return { url: url.toString(), status: res.status, html: typeof res.data === 'string' ? res.data : '', authId: auth?.id };
   }
   throw new Error(`Troppi redirect (>${MAX_REDIRECTS})`);
 }

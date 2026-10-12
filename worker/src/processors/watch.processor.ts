@@ -5,26 +5,30 @@
  *   tick     ogni minuto: accoda un "check" per ogni fonte scaduta
  *   check    scarica la fonte, estrae gli elementi, applica il filtro, salva i nuovi
  *   preview  analizza una pagina per il wizard (aree suggerite / elementi di un selettore)
+ *   verify   prova il cookie di un sito (Accessi ai siti) e dice se il login è valido
  *   cleanup  ogni giorno: elimina elementi letti vecchi e registro controlli
  *
  * Frequenza adattiva: se a un controllo tutti gli elementi trovati sono nuovi,
  * la lista scorre più velocemente dei controlli e si rischia di perdere elementi:
- * l'intervallo corrente si dimezza (minimo 15 min). Se non c'è nulla di nuovo
+ * l'intervallo corrente si dimezza (minimo 10 min). Se non c'è nulla di nuovo
  * torna gradualmente verso l'intervallo scelto dall'utente.
  */
 
 import { createHash } from 'crypto';
 import { Job, Queue } from 'bullmq';
 import { prisma } from '../lib/prisma';
-import { fetchPage, httpErrorMessage } from '../watch/http';
+import { fetchPage, httpErrorMessage, type SiteAuth } from '../watch/http';
+import { assessAuth, AuthExpiredError, expiredAuthFor, expiredMessage, loadAuths, type AuthOutcome } from '../watch/credentials';
 import { extractItems, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
 import { applyFilter, parseFilter } from '../watch/filter';
 import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
+import { detectForum } from '../watch/platform';
 
 export const WATCH_QUEUE = 'linko-watch';
 
 const TICK_BATCH = 100;
-const MIN_INTERVAL = 15;
+// Minimo della frequenza adattiva: abbastanza per i forum veloci, senza martellare i siti
+const MIN_INTERVAL = 10;
 const MAX_FAILS = 5;
 const ITEM_RETENTION_DAYS = 90;
 const CHECK_RETENTION_DAYS = 30;
@@ -32,7 +36,8 @@ const CHECK_RETENTION_DAYS = 30;
 export type WatchJobData =
   | { type: 'tick' }
   | { type: 'check'; sourceId: string }
-  | { type: 'preview'; url: string; selector?: string }
+  | { type: 'preview'; url: string; selector?: string; userId?: string }
+  | { type: 'verify'; userId: string; credentialId: string; url: string }
   | { type: 'cleanup' };
 
 export interface FoundFeed {
@@ -50,6 +55,18 @@ export interface PreviewResult {
   feeds: FoundFeed[];
   areas: SuggestedArea[];
   items: ExtractedItem[];
+  /** Presente se per il dominio c'è un accesso salvato: esito del login */
+  auth?: AuthOutcome;
+  /** Software del forum riconosciuto (XenForo, phpBB…), null per i siti normali */
+  forum?: string | null;
+}
+
+export interface VerifyResult {
+  ok: boolean;
+  state?: 'in' | 'out' | 'unknown';
+  status?: number;
+  finalUrl?: string;
+  message?: string;
 }
 
 /** Elemento candidato, comune a pagine (area) e feed. */
@@ -112,10 +129,14 @@ async function tick(queue: Queue): Promise<number> {
 // ── check ─────────────────────────────────────────────────────────────────────
 
 /** Scarica la fonte e restituisce gli elementi candidati, prima del filtro. */
-async function collect(source: { mode: string; url: string; selector: string | null; feedUrl: string | null }): Promise<Candidate[]> {
+async function collect(
+  source: { mode: string; url: string; selector: string | null; feedUrl: string | null },
+  auths: Awaited<ReturnType<typeof loadAuths>>,
+): Promise<Candidate[]> {
   if (source.mode === 'FEED') {
     if (!source.feedUrl) throw new Error('Fonte feed senza URL del feed');
-    const res = await fetchPage(source.feedUrl);
+    const res = await fetchPage(source.feedUrl, auths);
+    await assessAuth(res, auths);
     if (res.status >= 400) throw new Error(httpErrorMessage(res.status, 'Il feed'));
     const feed = parseFeed(res.html, res.url);
     if (!feed) throw new Error('L\'indirizzo non restituisce più un feed RSS/Atom');
@@ -124,7 +145,8 @@ async function collect(source: { mode: string; url: string; selector: string | n
   }
 
   if (!source.selector) throw new Error('Fonte senza area selezionata');
-  const page = await fetchPage(source.url);
+  const page = await fetchPage(source.url, auths);
+  await assessAuth(page, auths);
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
   const found = extractItems(page.html, page.url, source.selector);
   if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
@@ -137,8 +159,17 @@ async function check(sourceId: string): Promise<void> {
 
   const started = Date.now();
   const firstCheck = source.lastCheckedAt === null;
+  const auths = await loadAuths(source.userId);
+
+  // Accesso già scaduto: inutile interrogare il sito, si segnala finché l'utente non aggiorna il cookie
+  const expired = expiredAuthFor(source.feedUrl ?? source.url, auths);
+  if (expired) {
+    await markAuthError(source.id, expiredMessage(expired.domain), started);
+    return;
+  }
+
   try {
-    const found = await collect(source);
+    const found = await collect(source, auths);
 
     const terms = parseFilter(source.filter);
     const matching = found
@@ -162,8 +193,9 @@ async function check(sourceId: string): Promise<void> {
           title: item.title,
           publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
           matchedTerms: result.matchedTerms,
-          // Al primo controllo di un sito, ciò che c'è già è lo stato di partenza, non una novità
-          isRead: firstCheck && source.kind === 'SITE',
+          // Al primo controllo ciò che c'è già è lo stato di partenza, non una novità;
+          // per un forum con filtro, invece, i thread trovati sono proprio quelli cercati
+          isRead: firstCheck && (source.kind === 'SITE' || !source.filter.trim()),
         })),
         skipDuplicates: true,
       }),
@@ -186,6 +218,11 @@ async function check(sourceId: string): Promise<void> {
     ]);
   } catch (err) {
     const message = (err as Error).message.slice(0, 500);
+    // La scadenza del cookie non è un guasto del sito: non conta per la sospensione automatica
+    if (err instanceof AuthExpiredError) {
+      await markAuthError(source.id, message, started);
+      return;
+    }
     const failCount = source.failCount + 1;
     await prisma.$transaction([
       prisma.watchSource.update({
@@ -204,24 +241,36 @@ async function check(sourceId: string): Promise<void> {
   }
 }
 
+async function markAuthError(sourceId: string, message: string, started: number): Promise<void> {
+  await prisma.$transaction([
+    prisma.watchSource.update({
+      where: { id: sourceId },
+      data: { status: 'ERROR', lastError: message, lastCheckedAt: new Date() },
+    }),
+    prisma.watchCheck.create({ data: { sourceId, durationMs: Date.now() - started, ok: false, error: message } }),
+  ]);
+}
+
 // ── preview ───────────────────────────────────────────────────────────────────
 
-async function preview(url: string, selector?: string): Promise<PreviewResult> {
-  const page = await fetchPage(url);
+async function preview(url: string, selector?: string, userId?: string): Promise<PreviewResult> {
+  const auths = userId ? await loadAuths(userId) : [];
+  const page = await fetchPage(url, auths);
+  const auth = await assessAuth(page, auths);
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
 
   // L'utente ha incollato direttamente un feed
   const direct = parseFeed(page.html, page.url);
   if (direct) {
     return {
-      finalUrl: page.url, status: page.status, isFeed: true, areas: [], items: [],
+      finalUrl: page.url, status: page.status, isFeed: true, areas: [], items: [], auth,
       feeds: [{ url: page.url, title: direct.title, itemCount: direct.items.length, sample: direct.items.slice(0, 5) }],
     };
   }
 
   if (selector) {
     return {
-      finalUrl: page.url, status: page.status, isFeed: false, feeds: [], areas: [],
+      finalUrl: page.url, status: page.status, isFeed: false, feeds: [], areas: [], auth,
       items: extractItems(page.html, page.url, selector).slice(0, 50),
     };
   }
@@ -230,20 +279,22 @@ async function preview(url: string, selector?: string): Promise<PreviewResult> {
     finalUrl: page.url,
     status: page.status,
     isFeed: false,
-    feeds: await discoverFeeds(page.html, page.url),
+    feeds: await discoverFeeds(page.html, page.url, auths),
     areas: suggestAreas(page.html, page.url),
     items: [],
+    auth,
+    forum: detectForum(page.html),
   };
 }
 
 /** Prova i feed dichiarati e i percorsi comuni, entro un tempo massimo. */
-async function discoverFeeds(html: string, pageUrl: string): Promise<FoundFeed[]> {
+async function discoverFeeds(html: string, pageUrl: string, auths: SiteAuth[]): Promise<FoundFeed[]> {
   const deadline = Date.now() + FEED_DISCOVERY_BUDGET_MS;
   const found: FoundFeed[] = [];
   for (const candidate of feedCandidates(html, pageUrl)) {
     if (Date.now() > deadline || found.length >= 3) break;
     try {
-      const res = await fetchPage(candidate);
+      const res = await fetchPage(candidate, auths);
       if (res.status >= 400 || !looksLikeFeed(res.html)) continue;
       const feed = parseFeed(res.html, res.url);
       if (!feed || feed.items.length === 0 || found.some((f) => f.url === res.url)) continue;
@@ -253,6 +304,23 @@ async function discoverFeeds(html: string, pageUrl: string): Promise<FoundFeed[]
     }
   }
   return found;
+}
+
+// ── verify ────────────────────────────────────────────────────────────────────
+
+/** Prova il cookie appena salvato su una pagina del sito. */
+async function verify(userId: string, credentialId: string, url: string): Promise<VerifyResult> {
+  const auths = await loadAuths(userId, credentialId);
+  if (auths.length === 0) return { ok: false, message: 'Accesso non trovato o non leggibile' };
+  try {
+    const page = await fetchPage(url, auths);
+    if (!page.authId) return { ok: false, message: 'L\'indirizzo non appartiene al dominio di questo accesso' };
+    const outcome = await assessAuth(page, auths);
+    if (page.status >= 400) return { ok: false, status: page.status, finalUrl: page.url, message: httpErrorMessage(page.status) };
+    return { ok: true, state: outcome?.state, status: page.status, finalUrl: page.url };
+  } catch (err) {
+    return { ok: false, message: (err as Error).message };
+  }
 }
 
 // ── cleanup ───────────────────────────────────────────────────────────────────
@@ -281,7 +349,9 @@ export function createWatchProcessor(queue: Queue) {
       case 'check':
         return check(job.data.sourceId);
       case 'preview':
-        return preview(job.data.url, job.data.selector);
+        return preview(job.data.url, job.data.selector, job.data.userId);
+      case 'verify':
+        return verify(job.data.userId, job.data.credentialId, job.data.url);
       case 'cleanup':
         return cleanup();
     }

@@ -1,14 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
-  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList,
+  Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
-import { WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
+import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
-import type { WatchItem, WatchSource } from '@/types/api';
+import type { SiteCredential, WatchItem, WatchSource } from '@/types/api';
 
 const PAGE_SIZE = 50;
 
@@ -42,6 +43,7 @@ function every(minutes: number): string {
 export default function UpdatesPage() {
   const ui = useUI();
   const [sources, setSources] = useState<WatchSource[] | null>(null);
+  const [credentials, setCredentials] = useState<SiteCredential[]>([]);
   const [items, setItems] = useState<WatchItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -80,6 +82,7 @@ export default function UpdatesPage() {
 
   const loadSources = useCallback(async () => {
     try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
+    try { setCredentials(await watchApi.credentials()); } catch { /* avviso accessi non disponibile */ }
   }, []);
 
   const loadItems = useCallback(async (p = 1) => {
@@ -107,6 +110,12 @@ export default function UpdatesPage() {
   }, [loadSources]);
 
   const sourceList = sources ?? [];
+  const expiredCreds = credentials.filter((c) => c.status === 'EXPIRED');
+
+  // Il controllo delle fonti può aver appena segnato un accesso come scaduto: allinea l'header
+  useEffect(() => {
+    window.dispatchEvent(new Event(CREDENTIALS_CHANGED_EVENT));
+  }, [expiredCreds.length]);
   const totalUnread = sourceList.reduce((s, x) => s + x.unreadCount, 0);
 
   // Allinea il contatore nell'header (solo dopo il primo caricamento)
@@ -188,6 +197,16 @@ export default function UpdatesPage() {
       ui.toast(updated.isActive ? 'Fonte riattivata' : 'Fonte sospesa');
     } catch {
       ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  async function changeInterval(s: WatchSource, minutes: number) {
+    try {
+      const updated = await watchApi.updateSource(s.id, { intervalMinutes: minutes });
+      setSources((prev) => prev && prev.map((x) => (x.id === s.id ? { ...x, ...updated } : x)));
+      ui.toast(`Controllo ogni ${every(minutes)}`);
+    } catch {
+      ui.toast('Modifica non riuscita. Riprova.', { kind: 'error' });
     }
   }
 
@@ -290,6 +309,19 @@ export default function UpdatesPage() {
 
         {/* ── Timeline ───────────────────────────────────────────────────── */}
         <section className="flex-1 min-w-0 w-full" aria-label="Elementi">
+          {expiredCreds.map((c) => (
+            <div key={c.id} className="alert-error flex flex-wrap items-center gap-3 mb-4" role="alert">
+              <KeyRound size={16} className="shrink-0" aria-hidden="true" />
+              <span className="flex-1 min-w-[200px]">
+                L&apos;accesso a <strong translate="no">{c.domain}</strong> è scaduto
+                {c.sourceCount > 0 && <>: {c.sourceCount === 1 ? '1 fonte è ferma' : `${c.sourceCount} fonti sono ferme`}</>}.
+                {' '}Rifai login nel browser e incolla il nuovo cookie.
+              </span>
+              <Link href={`/access?domain=${encodeURIComponent(c.domain)}`} className="btn btn-sm btn-danger">
+                Aggiorna cookie
+              </Link>
+            </div>
+          ))}
           {current && (
             <div className="card flex items-center gap-3 flex-wrap px-4 py-3 mb-4">
               <div className="min-w-0 flex-1">
@@ -305,6 +337,18 @@ export default function UpdatesPage() {
                 )}
               </div>
               <div className="flex items-center gap-0.5">
+                <label className="sr-only" htmlFor="source-interval">Frequenza dei controlli</label>
+                <select
+                  id="source-interval"
+                  name="interval"
+                  className="input mr-1"
+                  style={{ width: 'auto', height: 30, fontSize: 12, padding: '0 8px' }}
+                  value={current.intervalMinutes}
+                  onChange={(e) => changeInterval(current, Number(e.target.value))}
+                  title="Frequenza dei controlli"
+                >
+                  {[15, 30, 60, 360, 1440].map((m) => <option key={m} value={m}>ogni {every(m)}</option>)}
+                </select>
                 <a href={current.url} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label="Apri la pagina" title="Apri la pagina">
                   <ExternalLink size={16} aria-hidden="true" />
                 </a>

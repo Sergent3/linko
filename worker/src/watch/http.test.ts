@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertPublicUrl, isPrivateAddress, BlockedUrlError, httpErrorMessage } from './http';
+import { assertPublicUrl, authFor, isPrivateAddress, BlockedUrlError, httpErrorMessage } from './http';
 
 vi.mock('../config', () => ({ config: { SCRAPING_TIMEOUT_MS: 1000, WATCH_BLOCKED_IPS: ['51.38.82.241'] } }));
 vi.mock('dns/promises', () => ({
@@ -56,5 +56,19 @@ describe('httpErrorMessage', () => {
     expect(httpErrorMessage(404)).toMatch(/controlla l'indirizzo/);
     expect(httpErrorMessage(429)).toMatch(/riprova tra qualche minuto/);
     expect(httpErrorMessage(503)).toMatch(/temporaneo/);
+  });
+});
+
+describe('authFor', () => {
+  const auths = [{ id: 'a', domain: 'simpcity.cr', cookie: 'x=1', userAgent: null }];
+  it('vale per il dominio e i sottodomini', () => {
+    expect(authFor('simpcity.cr', auths)?.id).toBe('a');
+    expect(authFor('www.simpcity.cr', auths)?.id).toBe('a');
+    expect(authFor('cdn.SimpCity.cr', auths)?.id).toBe('a');
+  });
+  it('non vale per altri siti, anche con nomi simili', () => {
+    expect(authFor('evilsimpcity.cr', auths)).toBeUndefined();
+    expect(authFor('simpcity.cr.evil.com', auths)).toBeUndefined();
+    expect(authFor('example.com', auths)).toBeUndefined();
   });
 });

@@ -11,9 +11,10 @@ describe('nextInterval', () => {
     expect(nextInterval(360, 90, 0, 0, false)).toBe(90);
   });
 
-  it('tutti gli elementi nuovi: dimezza, non sotto 15 minuti', () => {
+  it('tutti gli elementi nuovi: dimezza, non sotto 10 minuti', () => {
     expect(nextInterval(360, 360, 20, 20, false)).toBe(180);
-    expect(nextInterval(360, 20, 20, 20, false)).toBe(15);
+    expect(nextInterval(360, 15, 20, 20, false)).toBe(10);
+    expect(nextInterval(30, 30, 20, 20, false)).toBe(15);
   });
 
   it('niente di nuovo: torna verso la base senza superarla', () => {

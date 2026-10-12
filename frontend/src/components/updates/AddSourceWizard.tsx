@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon } from 'lucide-react';
+import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon, KeyRound, MessagesSquare } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
+import CredentialForm from './CredentialForm';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
-import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchSource } from '@/types/api';
+import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchPreview, WatchSource } from '@/types/api';
 
 interface Props {
   onClose: () => void;
@@ -53,10 +54,16 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 const INTERVALS = [
-  { value: 60, label: 'Ogni ora' },
-  { value: 360, label: 'Ogni 6 ore' },
-  { value: 1440, label: 'Ogni giorno' },
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 ora' },
+  { value: 360, label: '6 ore' },
+  { value: 1440, label: '1 giorno' },
 ];
+
+// I forum cambiano più in fretta dei siti: frequenza proposta più alta
+const DEFAULT_SITE_INTERVAL = 360;
+const DEFAULT_FORUM_INTERVAL = 30;
 
 function hostname(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
@@ -117,7 +124,11 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [manualItems, setManualItems] = useState<ExtractedItem[] | null>(null);
   const [name, setName] = useState('');
   const [filter, setFilter] = useState('');
-  const [intervalMinutes, setIntervalMinutes] = useState(360);
+  const [intervalMinutes, setIntervalMinutes] = useState(DEFAULT_SITE_INTERVAL);
+  const [forum, setForum] = useState<string | null>(null);
+  const [auth, setAuth] = useState<WatchPreview['auth']>();
+  // Mostra il modulo per incollare il cookie (sito bloccato o pagine riservate)
+  const [showLogin, setShowLogin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -163,6 +174,10 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     setBusy(true);
     try {
       const res = await watchApi.preview(target.trim());
+      setShowLogin(false);
+      setForum(res.forum ?? null);
+      setAuth(res.auth);
+      setIntervalMinutes(res.forum ? DEFAULT_FORUM_INTERVAL : DEFAULT_SITE_INTERVAL);
       setFinalUrl(res.finalUrl);
       setAreas(res.areas);
       setFeeds(res.feeds);
@@ -178,10 +193,9 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       setStep('area');
     } catch (err) {
       const msg = (err as Error).message;
-      // Il worker spiega già la causa; si aggiunge un suggerimento solo per i blocchi
-      setError(/anti-bot|login/.test(msg)
-        ? `${msg}. Linko non può leggere questo sito senza un browser: se il sito ha un feed RSS pubblico, prova a incollarne l'indirizzo.`
-        : `${msg}.`);
+      setError(`${msg}.`);
+      // Blocco anti-bot, login richiesto o cookie scaduto: si propone di incollare il cookie
+      if (/anti-bot|login|scaduto/.test(msg)) setShowLogin(true);
     } finally {
       setBusy(false);
     }
@@ -231,6 +245,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         name: name.trim(),
         url: finalUrl || url.trim(),
         ...(feedUrl ? { feedUrl } : { selector }),
+        kind: forum ? 'FORUM' : 'SITE',
         filter: filter.trim(),
         intervalMinutes,
         bookmarkId,
@@ -395,12 +410,32 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
 
       {step === 'area' && (
         <fieldset>
+          <legend className="sr-only">Cosa monitorare</legend>
           {sources.some((x) => (bookmarkId && x.bookmarkId === bookmarkId) || sameUrl(x.url, url) || (finalUrl && sameUrl(x.url, finalUrl))) && (
-            <p className="text-xs mb-4 px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
+            <p className="text-xs mb-3 px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
               Segui già questo sito: puoi aggiungere un altro feed o un&apos;altra area.
             </p>
           )}
-          <legend className="sr-only">Cosa monitorare</legend>
+          {(forum || auth) && (
+            <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
+              {forum && (
+                <span className="chip"><MessagesSquare size={11} className="mr-1" aria-hidden="true" /> Forum {forum}</span>
+              )}
+              {auth?.state === 'in' && (
+                <span className="chip" style={{ background: 'rgba(52,211,153,0.12)', color: 'var(--success)' }}>
+                  <KeyRound size={11} className="mr-1" aria-hidden="true" /> Connesso come utente registrato
+                </span>
+              )}
+              {auth && auth.state === 'unknown' && (
+                <span className="chip"><KeyRound size={11} className="mr-1" aria-hidden="true" /> Cookie di {auth.domain} inviato</span>
+              )}
+              {!auth && forum && !showLogin && (
+                <button type="button" className="btn btn-sm btn-ghost" style={{ color: 'var(--accent-text)' }} onClick={() => setShowLogin(true)}>
+                  Alcune sezioni richiedono il login? Aggiungi l&apos;accesso
+                </button>
+              )}
+            </div>
+          )}
           {feeds.length > 0 && (
             <>
               <h3 className="field-label">Feed trovati · consigliati</h3>
@@ -493,7 +528,12 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
               </button>
             ))}
           </div>
-          <p className="field-hint">Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 15 minuti).</p>
+          <p className="field-hint">
+            {forum
+              ? 'Per i forum è proposto un controllo ogni 30 minuti: i thread nuovi arrivano più spesso che sui siti. '
+              : ''}
+            Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 10 minuti).
+          </p>
 
           <label className="field-label mt-5" htmlFor="watch-filter">Filtro (facoltativo)</label>
           <input
@@ -517,6 +557,25 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       <div aria-live="polite">
         {error && <div className="alert-error mt-4">{error}</div>}
       </div>
+
+      {showLogin && step !== 'settings' && !busy && (
+        <div className="card p-4 mt-4" style={{ background: 'var(--surface-2)' }}>
+          <h3 className="flex items-center gap-2 font-semibold text-fg-strong mb-1">
+            <KeyRound size={15} aria-hidden="true" /> Hai un account su {hostname(finalUrl || url)}?
+          </h3>
+          <p className="text-xs text-fg-muted mb-4">
+            Incolla il cookie della tua sessione: Linko vedrà le pagine come le vedi tu da utente registrato.
+            Se scade, la fonte si ferma e te lo segnala.
+          </p>
+          <CredentialForm
+            site={finalUrl || url}
+            testUrl={finalUrl || url}
+            compact
+            onCancel={() => setShowLogin(false)}
+            onSaved={() => { setShowLogin(false); setError(''); analyze(finalUrl || url); }}
+          />
+        </div>
+      )}
     </Modal>
   );
 }

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-// Frequenze proposte nel wizard: 1 ora, 6 ore, 24 ore
-export const INTERVALS = [60, 360, 1440] as const;
+// Frequenze proposte nel wizard: 15 e 30 minuti (forum veloci), 1 ora, 6 ore, 24 ore
+export const INTERVALS = [15, 30, 60, 360, 1440] as const;
 
 const interval = z.coerce
   .number()
@@ -23,6 +23,7 @@ export const createSourceSchema = z
     url: z.string().url('URL non valido'),
     selector: selector.optional(),
     feedUrl: z.string().url('URL del feed non valido').optional(),
+    kind: z.enum(['SITE', 'FORUM']).default('SITE'),
     filter: filter.default(''),
     intervalMinutes: interval.default(360),
     bookmarkId: z.string().cuid().optional(),
@@ -50,6 +51,21 @@ export const listItemsSchema = z.object({
     .optional(),
 });
 
+// ── Accessi ai siti (cookie) ────────────────────────────────────────────────
+
+export const saveCredentialSchema = z.object({
+  // URL o dominio del sito: viene ridotto al dominio (senza www)
+  site: z.string().trim().min(3).max(500),
+  cookie: z.string().min(1, 'Incolla i cookie del sito').max(20_000),
+  userAgent: z.string().max(512).optional(),
+  // Pagina su cui provare subito il cookie (default: la home del dominio)
+  testUrl: z.string().url().optional(),
+});
+
+export const verifyCredentialSchema = z.object({
+  testUrl: z.string().url().optional(),
+});
+
 export const updateItemSchema = z.object({
   isRead: z.boolean().optional(),
   isHidden: z.boolean().optional(),
@@ -64,3 +80,4 @@ export type CreateSourceDto = z.infer<typeof createSourceSchema>;
 export type UpdateSourceDto = z.infer<typeof updateSourceSchema>;
 export type ListItemsDto = z.infer<typeof listItemsSchema>;
 export type UpdateItemDto = z.infer<typeof updateItemSchema>;
+export type SaveCredentialDto = z.infer<typeof saveCredentialSchema>;

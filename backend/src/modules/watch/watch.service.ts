@@ -3,7 +3,10 @@ import { watchQueue, watchQueueEvents } from '../../lib/queue';
 import { normalizeAndHash } from '../../utils/url-hash';
 import { AppError } from '../../middleware/error.middleware';
 import { createBookmark } from '../bookmarks/bookmarks.service';
-import type { CreateSourceDto, ListItemsDto, PreviewDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
+import { config } from '../../config';
+import { encrypt, loadKey } from '../../utils/secret-box';
+import { cleanUserAgent, CookieInputError, domainOf, parseCookieInput } from './cookies';
+import type { CreateSourceDto, ListItemsDto, PreviewDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
 
 const PREVIEW_TIMEOUT_MS = 30_000;
 
@@ -27,10 +30,10 @@ async function assertItem(id: string, userId: string) {
  * Analizza una pagina tramite il worker: aree suggerite, oppure elementi
  * estratti con il selettore indicato. Il backend non scarica mai pagine esterne.
  */
-export async function preview(dto: PreviewDto) {
+export async function preview(dto: PreviewDto, userId: string) {
   const job = await watchQueue.add(
     'preview',
-    { type: 'preview', url: dto.url, selector: dto.selector },
+    { type: 'preview', url: dto.url, selector: dto.selector, userId },
     // I job vanno conservati qualche secondo: se spariscono subito,
     // waitUntilFinished può non ricevere l'evento di completamento
     { removeOnComplete: { age: 60 }, removeOnFail: { age: 60 }, attempts: 1 },
@@ -72,7 +75,7 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
       userId,
       name: dto.name,
       url: dto.url,
-      kind: 'SITE',
+      kind: dto.kind,
       mode: dto.feedUrl ? 'FEED' : 'AREA',
       selector: dto.selector,
       feedUrl: dto.feedUrl,
@@ -167,4 +170,103 @@ export async function saveAsBookmark(id: string, userId: string) {
     bookmarkId = existing.id;
   }
   return prisma.watchItem.update({ where: { id }, data: { savedBookmarkId: bookmarkId, isRead: true } });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Accessi ai siti (cookie di sessione cifrati)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const secretKey = loadKey(config.WATCH_SECRET_KEY);
+
+/** Campi mostrabili: il cookie non esce mai dal server. */
+const credentialSelect = {
+  id: true, domain: true, cookieNames: true, userAgent: true, status: true, lastError: true,
+  lastUsedAt: true, lastStatus: true, expiredAt: true, createdAt: true, updatedAt: true,
+} as const;
+
+export async function listCredentials(userId: string) {
+  const creds = await prisma.siteCredential.findMany({ where: { userId }, select: credentialSelect, orderBy: { domain: 'asc' } });
+  // Fonti che usano ciascun accesso (stesso dominio o sottodominio)
+  const sources = await prisma.watchSource.findMany({ where: { userId }, select: { url: true, feedUrl: true } });
+  return creds.map((c) => ({
+    ...c,
+    hasUserAgent: !!c.userAgent,
+    userAgent: undefined,
+    sourceCount: sources.filter((s) => [s.url, s.feedUrl].some((u) => u && hostMatches(u, c.domain))).length,
+  }));
+}
+
+function hostMatches(url: string, domain: string): boolean {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    return h === domain || h.endsWith(`.${domain}`);
+  } catch {
+    return false;
+  }
+}
+
+/** Le fonti del dominio ferme per accesso scaduto ripartono subito. */
+async function resumeSources(userId: string, domain: string) {
+  const sources = await prisma.watchSource.findMany({ where: { userId }, select: { id: true, url: true, feedUrl: true } });
+  const ids = sources.filter((s) => [s.url, s.feedUrl].some((u) => u && hostMatches(u, domain))).map((s) => s.id);
+  if (ids.length === 0) return;
+  await prisma.watchSource.updateMany({
+    where: { id: { in: ids } },
+    data: { isActive: true, status: 'PENDING', lastError: null, failCount: 0, nextCheckAt: new Date() },
+  });
+}
+
+export async function saveCredential(dto: SaveCredentialDto, userId: string) {
+  let domain: string;
+  let parsed: { header: string; names: string[] };
+  let userAgent: string | null;
+  try {
+    domain = domainOf(dto.site);
+    parsed = parseCookieInput(dto.cookie, domain);
+    userAgent = cleanUserAgent(dto.userAgent);
+  } catch (err) {
+    if (err instanceof CookieInputError) throw new AppError(400, err.message);
+    throw err;
+  }
+  const data = {
+    cookieEnc: encrypt(parsed.header, secretKey),
+    cookieNames: parsed.names,
+    userAgent,
+    status: 'UNVERIFIED' as const,
+    lastError: null,
+    lastStatus: null,
+    expiredAt: null,
+  };
+  const cred = await prisma.siteCredential.upsert({
+    where: { userId_domain: { userId, domain } },
+    create: { userId, domain, ...data },
+    update: data,
+    select: { id: true },
+  });
+  await resumeSources(userId, domain);
+  const verification = await verifyCredential(cred.id, userId, dto.testUrl);
+  return { credential: (await listCredentials(userId)).find((c) => c.id === cred.id), verification };
+}
+
+export async function verifyCredential(id: string, userId: string, testUrl?: string) {
+  const cred = await prisma.siteCredential.findFirst({ where: { id, userId }, select: { id: true, domain: true } });
+  if (!cred) throw new AppError(404, 'Accesso non trovato');
+  const url = testUrl && hostMatches(testUrl, cred.domain) ? testUrl : `https://${cred.domain}/`;
+  const job = await watchQueue.add(
+    'verify',
+    { type: 'verify', userId, credentialId: cred.id, url },
+    { removeOnComplete: { age: 60 }, removeOnFail: { age: 60 }, attempts: 1 },
+  );
+  try {
+    return await job.waitUntilFinished(watchQueueEvents, PREVIEW_TIMEOUT_MS);
+  } catch (err) {
+    const msg = (err as Error).message;
+    return { ok: false, message: /timed out/i.test(msg) ? 'Il sito non ha risposto in tempo' : msg };
+  }
+}
+
+export async function deleteCredential(id: string, userId: string) {
+  const cred = await prisma.siteCredential.findFirst({ where: { id, userId } });
+  if (!cred) throw new AppError(404, 'Accesso non trovato');
+  await prisma.siteCredential.delete({ where: { id } });
 }

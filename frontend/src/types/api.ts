@@ -159,6 +159,42 @@ export interface WatchPreview {
   feeds: FoundFeed[];
   areas: SuggestedArea[];
   items: ExtractedItem[];
+  /** Presente se per il dominio c'è un accesso salvato */
+  auth?: { domain: string; state: 'in' | 'out' | 'unknown'; status: number };
+  /** Software del forum riconosciuto (XenForo, phpBB…) */
+  forum?: string | null;
+}
+
+export type CredentialStatus = 'UNVERIFIED' | 'OK' | 'EXPIRED';
+
+export interface SiteCredential {
+  id: string;
+  domain: string;
+  cookieNames: string[];
+  hasUserAgent: boolean;
+  status: CredentialStatus;
+  lastError: string | null;
+  lastUsedAt: string | null;
+  lastStatus: number | null;
+  expiredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceCount: number;
+}
+
+export interface CredentialVerification {
+  ok: boolean;
+  state?: 'in' | 'out' | 'unknown';
+  status?: number;
+  finalUrl?: string;
+  message?: string;
+}
+
+export interface SaveCredentialDto {
+  site: string;
+  cookie: string;
+  userAgent?: string;
+  testUrl?: string;
 }
 
 export interface CreateWatchSourceDto {
@@ -166,6 +202,7 @@ export interface CreateWatchSourceDto {
   url: string;
   selector?: string;
   feedUrl?: string;
+  kind?: 'SITE' | 'FORUM';
   filter?: string;
   intervalMinutes: number;
   bookmarkId?: string;

@@ -5,8 +5,10 @@ import {
   listItemsSchema,
   previewSchema,
   readAllSchema,
+  saveCredentialSchema,
   updateItemSchema,
   updateSourceSchema,
+  verifyCredentialSchema,
 } from './watch.schema';
 
 export const watchRouter = Router();
@@ -14,7 +16,7 @@ export const watchRouter = Router();
 // POST /api/v1/watch/preview  →  aree suggerite o elementi di un selettore
 watchRouter.post('/preview', async (req, res, next) => {
   try {
-    res.json(await service.preview(previewSchema.parse(req.body)));
+    res.json(await service.preview(previewSchema.parse(req.body), req.user.id));
   } catch (err) { next(err); }
 });
 
@@ -82,5 +84,34 @@ watchRouter.patch('/items/:id', async (req, res, next) => {
 watchRouter.post('/items/:id/save', async (req, res, next) => {
   try {
     res.json(await service.saveAsBookmark(req.params.id, req.user.id));
+  } catch (err) { next(err); }
+});
+
+// ── Accessi ai siti (cookie) ──────────────────────────────────────────────────
+
+watchRouter.get('/credentials', async (req, res, next) => {
+  try {
+    res.json(await service.listCredentials(req.user.id));
+  } catch (err) { next(err); }
+});
+
+// Crea o sostituisce l'accesso del dominio e lo prova subito
+watchRouter.put('/credentials', async (req, res, next) => {
+  try {
+    res.json(await service.saveCredential(saveCredentialSchema.parse(req.body), req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.post('/credentials/:id/verify', async (req, res, next) => {
+  try {
+    const { testUrl } = verifyCredentialSchema.parse(req.body ?? {});
+    res.json(await service.verifyCredential(req.params.id, req.user.id, testUrl));
+  } catch (err) { next(err); }
+});
+
+watchRouter.delete('/credentials/:id', async (req, res, next) => {
+  try {
+    await service.deleteCredential(req.params.id, req.user.id);
+    res.status(204).send();
   } catch (err) { next(err); }
 });
