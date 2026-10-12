@@ -9,6 +9,8 @@ const envSchema = z.object({
   SCRAPING_DELAY_MS: z.coerce.number().int().min(0).default(1_200),
   SCRAPING_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(10_000),
   HTTP_CHECK_TIMEOUT_MS: z.coerce.number().int().min(1_000).default(8_000),
+  // IP pubblici da trattare come interni (es. l'IP del VPS stesso), separati da virgola
+  WATCH_BLOCKED_IPS: z.string().default('').transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean)),
 });
 
 const parsed = envSchema.safeParse(process.env);

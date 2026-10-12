@@ -1,10 +1,11 @@
-import { Worker } from 'bullmq';
+import { Queue, Worker } from 'bullmq';
 import { redis } from './lib/redis';
 import { prisma } from './lib/prisma';
 import { config } from './config';
 import { enrichProcessor } from './processors/enrich.processor';
 import { healthCheckProcessor } from './processors/health-check.processor';
 import { tagProcessor } from './processors/tag.processor';
+import { createWatchProcessor, WATCH_QUEUE } from './processors/watch.processor';
 
 const QUEUE_NAMES = {
   ENRICH: 'linko-enrich',
@@ -33,14 +34,27 @@ const tagWorker = new Worker(QUEUE_NAMES.TAG, tagProcessor, {
   concurrency: 1,
 });
 
+// Monitoraggio fonti: stesso rate limit dello scraping, i preview del wizard
+// passano dalla stessa coda così ogni richiesta verso l'esterno è limitata
+const watchQueue = new Queue(WATCH_QUEUE, { connection: redis });
+const watchWorker = new Worker(WATCH_QUEUE, createWatchProcessor(watchQueue), {
+  connection: redis,
+  concurrency: 3,
+  limiter: { max: 1, duration: config.SCRAPING_DELAY_MS },
+});
+
+// Job ricorrenti: BullMQ li de-duplica per jobId, sicuro anche con più repliche
+void watchQueue.add('tick', { type: 'tick' }, { repeat: { every: 60_000 }, jobId: 'watch-tick', removeOnComplete: true, removeOnFail: 50 });
+void watchQueue.add('cleanup', { type: 'cleanup' }, { repeat: { pattern: '15 4 * * *' }, jobId: 'watch-cleanup', removeOnComplete: true, removeOnFail: 10 });
+
 // ── Lifecycle & Logging ───────────────────────────────────────────────────────
 
-const workers = [enrichWorker, healthCheckWorker, tagWorker];
+const workers = [enrichWorker, healthCheckWorker, tagWorker, watchWorker];
 
 workers.forEach((w) => {
-  w.on('completed', (job) =>
-    console.log(`[worker:${w.name}] Job ${job.id} completato`),
-  );
+  w.on('completed', (job) => {
+    if (job.name !== 'tick') console.log(`[worker:${w.name}] Job ${job.id} completato`);
+  });
   w.on('failed', (job, err) =>
     console.error(`[worker:${w.name}] Job ${job?.id} fallito: ${err.message}`),
   );
@@ -54,6 +68,7 @@ workers.forEach((w) => {
 async function shutdown() {
   console.log('[worker] Graceful shutdown in corso...');
   await Promise.all(workers.map((w) => w.close()));
+  await watchQueue.close();
   await prisma.$disconnect();
   process.exit(0);
 }

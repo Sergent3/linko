@@ -20,9 +20,9 @@ enum EnrichStatus {
 }
 
 enum TagSource {
-  REGEX   // Assegnato dal tag-engine (gratuito, regex su dominio)
-  AI      // Assegnato dal modello AI (futuro, a pagamento)
-  MANUAL  // Assegnato dall'utente
+  REGEX // Assegnato dal tag-engine (gratuito, regex su dominio)
+  AI // Assegnato dal modello AI (futuro, a pagamento)
+  MANUAL // Assegnato dall'utente
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -41,14 +41,16 @@ model User {
   folders       Folder[]
   tags          Tag[]
   refreshTokens RefreshToken[]
+  watchSources  WatchSource[]
+  watchItems    WatchItem[]
 }
 
 model RefreshToken {
   id        String    @id @default(cuid())
-  tokenHash String    @unique   // SHA-256(rawToken) — il raw non è mai persistito
+  tokenHash String    @unique // SHA-256(rawToken) — il raw non è mai persistito
   userId    String
   expiresAt DateTime
-  revokedAt DateTime?           // null = valido
+  revokedAt DateTime? // null = valido
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -76,12 +78,12 @@ model Folder {
 model Bookmark {
   id          String  @id @default(cuid())
   url         String
-  urlHash     String  // SHA-256(normalized_url) — usato per de-duplicazione
+  urlHash     String // SHA-256(normalized_url) — usato per de-duplicazione
   title       String
   description String?
   favicon     String? // URL favicon (solo http/https, no data URI)
   imageUrl    String? // OpenGraph image
-  httpStatus  Int?    // 200, 301, 404, 0=irraggiungibile
+  httpStatus  Int? // 200, 301, 404, 0=irraggiungibile
   folderId    String?
   userId      String
 
@@ -105,9 +107,10 @@ model Bookmark {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  tags   BookmarkTag[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder       Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags         BookmarkTag[]
+  watchSources WatchSource[]
 
   // Constraint di unicità: un URL normalizzato non può comparire due volte per lo stesso utente
   @@unique([urlHash, userId])
@@ -141,4 +144,103 @@ model BookmarkTag {
   tag      Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([bookmarkId, tagId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MONITORAGGIO FONTI (Aggiornamenti)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum WatchKind {
+  SITE // ultimi aggiornamenti in un'area della pagina
+  FORUM // thread filtrati per tag
+}
+
+enum WatchMode {
+  AREA // selettore CSS su pagina HTML
+  FEED // feed RSS/Atom
+}
+
+enum WatchStatus {
+  PENDING // mai controllata
+  OK
+  ERROR
+}
+
+enum WatchItemKind {
+  NEW
+  UPDATED
+}
+
+model WatchSource {
+  id         String    @id @default(cuid())
+  userId     String
+  bookmarkId String? // segnalibro da cui è nata la fonte, se c'è
+  name       String
+  url        String
+  kind       WatchKind @default(SITE)
+  mode       WatchMode @default(AREA)
+  selector   String? // mode AREA
+  feedUrl    String? // mode FEED
+  filter     String    @default("") // sintassi in worker/src/watch/filter.ts
+
+  // Frequenza: base scelta dall'utente, corrente adattata all'attività
+  intervalMinutes        Int @default(360)
+  currentIntervalMinutes Int @default(360)
+
+  isActive      Boolean     @default(true)
+  status        WatchStatus @default(PENDING)
+  lastError     String?
+  failCount     Int         @default(0)
+  lastCheckedAt DateTime?
+  nextCheckAt   DateTime    @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookmark Bookmark?    @relation(fields: [bookmarkId], references: [id], onDelete: SetNull)
+  items    WatchItem[]
+  checks   WatchCheck[]
+
+  @@index([isActive, nextCheckAt])
+  @@index([userId])
+}
+
+model WatchItem {
+  id              String        @id @default(cuid())
+  sourceId        String
+  userId          String
+  key             String // SHA-256 dell'URL normalizzato (o guid del feed)
+  url             String
+  title           String
+  publishedAt     DateTime?
+  kind            WatchItemKind @default(NEW)
+  matchedTerms    String[] // termini del filtro che hanno fatto scattare l'elemento
+  isRead          Boolean       @default(false)
+  isHidden        Boolean       @default(false)
+  savedBookmarkId String? // se l'utente l'ha salvato come segnalibro
+  firstSeenAt     DateTime      @default(now())
+  lastSeenAt      DateTime      @default(now())
+
+  source WatchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, key])
+  @@index([userId, isRead, firstSeenAt])
+}
+
+// Registro dei controlli, per diagnostica (conservato 30 giorni)
+model WatchCheck {
+  id         String   @id @default(cuid())
+  sourceId   String
+  startedAt  DateTime @default(now())
+  durationMs Int
+  ok         Boolean
+  itemsFound Int      @default(0)
+  newItems   Int      @default(0)
+  error      String?
+
+  source WatchSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@index([sourceId, startedAt])
 }
