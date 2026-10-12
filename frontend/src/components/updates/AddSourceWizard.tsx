@@ -177,7 +177,11 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       }
       setStep('area');
     } catch (err) {
-      setError(`${(err as Error).message}. Controlla l'indirizzo e riprova.`);
+      const msg = (err as Error).message;
+      // Il worker spiega già la causa; si aggiunge un suggerimento solo per i blocchi
+      setError(/anti-bot|login/.test(msg)
+        ? `${msg}. Linko non può leggere questo sito senza un browser: se il sito ha un feed RSS pubblico, prova a incollarne l'indirizzo.`
+        : `${msg}.`);
     } finally {
       setBusy(false);
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { assertPublicUrl, isPrivateAddress, BlockedUrlError } from './http';
+import { assertPublicUrl, isPrivateAddress, BlockedUrlError, httpErrorMessage } from './http';
 
 vi.mock('../config', () => ({ config: { SCRAPING_TIMEOUT_MS: 1000, WATCH_BLOCKED_IPS: ['51.38.82.241'] } }));
 vi.mock('dns/promises', () => ({
@@ -44,5 +44,17 @@ describe('assertPublicUrl', () => {
     ['host inesistente', 'http://nessuno.example/'],
   ])('blocca %s', async (_desc, url) => {
     await expect(assertPublicUrl(url)).rejects.toBeInstanceOf(BlockedUrlError);
+  });
+});
+
+describe('httpErrorMessage', () => {
+  it('spiega i blocchi anti-bot', () => {
+    expect(httpErrorMessage(403)).toMatch(/anti-bot/);
+    expect(httpErrorMessage(401, 'Il feed')).toMatch(/^Il feed blocca/);
+  });
+  it('distingue pagina inesistente, limiti ed errori del server', () => {
+    expect(httpErrorMessage(404)).toMatch(/controlla l'indirizzo/);
+    expect(httpErrorMessage(429)).toMatch(/riprova tra qualche minuto/);
+    expect(httpErrorMessage(503)).toMatch(/temporaneo/);
   });
 });

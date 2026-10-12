@@ -16,7 +16,7 @@
 import { createHash } from 'crypto';
 import { Job, Queue } from 'bullmq';
 import { prisma } from '../lib/prisma';
-import { fetchPage } from '../watch/http';
+import { fetchPage, httpErrorMessage } from '../watch/http';
 import { extractItems, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
 import { applyFilter, parseFilter } from '../watch/filter';
 import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
@@ -116,7 +116,7 @@ async function collect(source: { mode: string; url: string; selector: string | n
   if (source.mode === 'FEED') {
     if (!source.feedUrl) throw new Error('Fonte feed senza URL del feed');
     const res = await fetchPage(source.feedUrl);
-    if (res.status >= 400) throw new Error(`Feed: HTTP ${res.status}`);
+    if (res.status >= 400) throw new Error(httpErrorMessage(res.status, 'Il feed'));
     const feed = parseFeed(res.html, res.url);
     if (!feed) throw new Error('L\'indirizzo non restituisce più un feed RSS/Atom');
     // Chiave dal guid/id del feed: resta stabile anche se cambia l'URL dell'articolo
@@ -125,7 +125,7 @@ async function collect(source: { mode: string; url: string; selector: string | n
 
   if (!source.selector) throw new Error('Fonte senza area selezionata');
   const page = await fetchPage(source.url);
-  if (page.status >= 400) throw new Error(`HTTP ${page.status}`);
+  if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
   const found = extractItems(page.html, page.url, source.selector);
   if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
   return found.map((i) => ({ ...i, key: itemKey(i.url), tags: [] }));
@@ -208,7 +208,7 @@ async function check(sourceId: string): Promise<void> {
 
 async function preview(url: string, selector?: string): Promise<PreviewResult> {
   const page = await fetchPage(url);
-  if (page.status >= 400) throw new Error(`La pagina risponde HTTP ${page.status}`);
+  if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
 
   // L'utente ha incollato direttamente un feed
   const direct = parseFeed(page.html, page.url);

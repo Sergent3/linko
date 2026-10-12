@@ -21,6 +21,17 @@ export const SCRAPING_HEADERS = {
 const MAX_REDIRECTS = 5;
 const MAX_BYTES = 5 * 1024 * 1024;
 
+/** Messaggio comprensibile per un codice HTTP di errore (mostrato nel wizard e nella fonte). */
+export function httpErrorMessage(status: number, what = 'La pagina'): string {
+  if (status === 401 || status === 403) {
+    return `${what} blocca l'accesso automatico (HTTP ${status}): di solito è una protezione anti-bot o serve il login`;
+  }
+  if (status === 404 || status === 410) return `${what} non esiste (HTTP ${status}): controlla l'indirizzo`;
+  if (status === 429) return `Il sito sta limitando le richieste (HTTP 429): riprova tra qualche minuto`;
+  if (status >= 500) return `Il sito ha un problema temporaneo (HTTP ${status}): riprova più tardi`;
+  return `${what} risponde HTTP ${status}`;
+}
+
 export class BlockedUrlError extends Error {
   constructor(message: string) {
     super(message);
