@@ -1,22 +1,52 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, Check, ChevronLeft, Rss, LayoutList } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
-import { watchApi } from '@/lib/api';
-import type { ExtractedItem, FoundFeed, SuggestedArea, WatchSource } from '@/types/api';
+import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
+import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchSource } from '@/types/api';
 
 interface Props {
   onClose: () => void;
   onCreated: (source: WatchSource) => void;
+  /** Fonti già seguite: i segnalibri corrispondenti vengono segnalati */
+  sources?: WatchSource[];
   initialUrl?: string;
   bookmarkId?: string;
+}
+
+const MAX_RESULTS = 60;
+
+function normalize(s: string) {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function sameUrl(a: string, b: string) {
+  const strip = (u: string) => u.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/+$/, '').toLowerCase();
+  return strip(a) === strip(b);
+}
+
+function Favicon({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  const host = hostname(url);
+  if (failed || !host) return <span className="favicon favicon-fallback" aria-hidden="true" />;
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${host}&sz=32`}
+      alt=""
+      width={16}
+      height={16}
+      loading="lazy"
+      className="favicon"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 type Step = 'url' | 'area' | 'settings';
 
 const STEPS: { id: Step; label: string }[] = [
-  { id: 'url', label: 'Pagina' },
+  { id: 'url', label: 'Sito' },
   { id: 'area', label: 'Cosa monitorare' },
   { id: 'settings', label: 'Impostazioni' },
 ];
@@ -68,9 +98,14 @@ function Choice({
   );
 }
 
-export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', bookmarkId }: Props) {
+export default function AddSourceWizard({ onClose, onCreated, sources = [], initialUrl = '', bookmarkId: initialBookmarkId }: Props) {
   const [step, setStep] = useState<Step>('url');
   const [url, setUrl] = useState(initialUrl);
+  const [bookmarkId, setBookmarkId] = useState<string | undefined>(initialBookmarkId);
+  const [bookmarkTitle, setBookmarkTitle] = useState('');
+  const [allBookmarks, setAllBookmarks] = useState<Bookmark[] | null>(null);
+  const [query, setQuery] = useState('');
+  const [manualMode, setManualMode] = useState(false);
   const [finalUrl, setFinalUrl] = useState('');
   const [areas, setAreas] = useState<SuggestedArea[]>([]);
   const [feeds, setFeeds] = useState<FoundFeed[]>([]);
@@ -89,12 +124,44 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
   const visibleAreas = areas.filter((a) => showNav || !a.isNavigation);
   const stepIndex = STEPS.findIndex((s) => s.id === step);
 
-  async function analyze() {
-    if (!url.trim()) return;
+  // Segnalibri tra cui scegliere: il primo passo parte da qui, niente link da incollare
+  useEffect(() => {
+    bookmarksApi.list({ page: 1, limit: 2000 })
+      .then((res) => setAllBookmarks(res.data ?? []))
+      .catch(() => { setAllBookmarks([]); setManualMode(true); });
+  }, []);
+
+  // Aperto da un segnalibro: si analizza subito la sua pagina
+  useEffect(() => {
+    if (initialUrl) analyze(initialUrl);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isFollowed = (b: Bookmark) => sources.some((s) => s.bookmarkId === b.id || sameUrl(s.url, b.url));
+
+  const matches = useMemo(() => {
+    if (!allBookmarks) return [];
+    const terms = normalize(query.trim()).split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return allBookmarks;
+    return allBookmarks.filter((b) => {
+      const hay = normalize(`${b.title} ${b.url} ${b.folder?.name ?? ''}`);
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [allBookmarks, query]);
+  const results = matches.slice(0, MAX_RESULTS);
+
+  function pickBookmark(b: Bookmark) {
+    setUrl(b.url);
+    setBookmarkId(b.id);
+    setBookmarkTitle(b.title);
+    analyze(b.url);
+  }
+
+  async function analyze(target = url) {
+    if (!target.trim()) return;
     setError('');
     setBusy(true);
     try {
-      const res = await watchApi.preview(url.trim());
+      const res = await watchApi.preview(target.trim());
       setFinalUrl(res.finalUrl);
       setAreas(res.areas);
       setFeeds(res.feeds);
@@ -145,7 +212,9 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
     const areaName = chosenFeed
       ? chosenFeed.title
       : chosenArea && !/^[a-z]+(\.|$)/.test(chosenArea.label) ? chosenArea.label : '';
-    setName(`${hostname(finalUrl || url)}${areaName ? ` · ${areaName}` : ''}`);
+    const base = bookmarkTitle.trim() || hostname(finalUrl || url);
+    const extra = areaName && !normalize(base).includes(normalize(areaName)) ? ` · ${areaName}` : '';
+    setName(`${base}${extra}`);
     setStep('settings');
   }
 
@@ -175,13 +244,13 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
   const footer = (
     <>
       {step !== 'url' && (
-        <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => setStep(step === 'settings' ? 'area' : 'url')} disabled={busy}>
+        <button type="button" className="btn btn-ghost" style={{ marginRight: 'auto' }} onClick={() => { setError(''); setStep(step === 'settings' ? 'area' : 'url'); }} disabled={busy}>
           <ChevronLeft size={15} aria-hidden="true" /> Indietro
         </button>
       )}
       <button type="button" className="btn btn-secondary" onClick={onClose}>Annulla</button>
-      {step === 'url' && (
-        <button type="button" className="btn btn-primary" onClick={analyze} disabled={busy || !url.trim()}>
+      {step === 'url' && manualMode && (
+        <button type="button" className="btn btn-primary" onClick={() => analyze()} disabled={busy || !url.trim()}>
           {busy ? spinner : <Search size={14} aria-hidden="true" />} {busy ? 'Analisi…' : 'Analizza pagina'}
         </button>
       )}
@@ -197,7 +266,7 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
   );
 
   return (
-    <Modal title="Aggiungi fonte" onClose={onClose} width={720} dismissOnBackdrop={step === 'url' && !url} footer={footer}>
+    <Modal title="Aggiungi fonte" onClose={onClose} width={720} dismissOnBackdrop={step === 'url'} footer={footer}>
       {/* Indicatore dei passi */}
       <ol className="flex items-center gap-2 mb-5 text-xs" style={{ listStyle: 'none' }} aria-label="Passi">
         {STEPS.map((s, i) => (
@@ -217,8 +286,85 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
         ))}
       </ol>
 
-      {step === 'url' && (
-        <form onSubmit={(e) => { e.preventDefault(); analyze(); }}>
+      {step === 'url' && busy && (
+        <div className="flex flex-col items-center gap-3 py-10 text-fg-muted" aria-live="polite">
+          <div className="spinner" aria-hidden="true" />
+          <p>Analizzo <strong className="text-fg-strong">{bookmarkTitle || hostname(url)}</strong>…</p>
+          <p className="text-xs text-fg-faint">Cerco feed RSS e liste di elementi nella pagina.</p>
+        </div>
+      )}
+
+      {step === 'url' && !busy && !manualMode && (
+        <div>
+          <label className="field-label" htmlFor="watch-bm-search">Quale dei tuoi segnalibri vuoi seguire?</label>
+          <div className="relative">
+            <Search size={14} aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-faint pointer-events-none" />
+            <input
+              id="watch-bm-search"
+              name="bookmark-search"
+              type="search"
+              className="input"
+              style={{ paddingLeft: 32 }}
+              autoComplete="off"
+              spellCheck={false}
+              data-autofocus
+              placeholder="Cerca per nome, indirizzo o cartella…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && results[0]) { e.preventDefault(); pickBookmark(results[0]); } }}
+            />
+          </div>
+
+          <ul
+            className="mt-3 rounded-[10px] overflow-y-auto"
+            style={{ listStyle: 'none', maxHeight: 'min(380px, 50vh)', border: '1px solid var(--border)', background: 'var(--bg)', overscrollBehavior: 'contain' }}
+            aria-label="Segnalibri"
+          >
+            {allBookmarks === null && (
+              <li className="flex justify-center py-8"><div className="spinner" aria-label="Caricamento…" /></li>
+            )}
+            {allBookmarks !== null && results.length === 0 && (
+              <li className="empty-state" style={{ padding: 24 }}>
+                {query ? `Nessun segnalibro corrisponde a “${query}”.` : 'Non hai ancora segnalibri.'}
+              </li>
+            )}
+            {results.map((b, idx) => (
+              <li key={b.id} style={{ borderTop: idx > 0 ? '1px solid var(--border)' : undefined }}>
+                <button
+                  type="button"
+                  className="bookmark-item w-full text-left"
+                  style={{ border: 'none', font: 'inherit', cursor: 'pointer', minHeight: 48 }}
+                  onClick={() => pickBookmark(b)}
+                >
+                  <Favicon url={b.url} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-fg-strong">{b.title || hostname(b.url)}</span>
+                    <span className="flex items-center gap-1.5 text-xs text-fg-faint min-w-0">
+                      <span className="truncate">{hostname(b.url)}</span>
+                      {b.folder && (
+                        <span className="inline-flex items-center gap-1 shrink-0">
+                          · <FolderIcon size={11} aria-hidden="true" /> {b.folder.name}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                  {isFollowed(b) && <span className="chip shrink-0">già seguito</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {matches.length > results.length && (
+            <p className="field-hint">Mostrati {results.length} di {matches.length}: scrivi qualcosa per restringere.</p>
+          )}
+
+          <button type="button" className="btn btn-sm btn-ghost mt-3" onClick={() => setManualMode(true)}>
+            <Link2 size={14} aria-hidden="true" /> Non è tra i segnalibri? Incolla un indirizzo
+          </button>
+        </div>
+      )}
+
+      {step === 'url' && !busy && manualMode && (
+        <form onSubmit={(e) => { e.preventDefault(); setBookmarkId(undefined); setBookmarkTitle(''); analyze(); }}>
           <label className="field-label" htmlFor="watch-url">Indirizzo della pagina con gli aggiornamenti</label>
           <input
             id="watch-url"
@@ -234,6 +380,11 @@ export default function AddSourceWizard({ onClose, onCreated, initialUrl = '', b
             onChange={(e) => setUrl(e.target.value)}
           />
           <p className="field-hint">Linko scarica la pagina e cerca da solo feed RSS e liste di elementi (articoli, uscite, thread).</p>
+          {allBookmarks && allBookmarks.length > 0 && (
+            <button type="button" className="btn btn-sm btn-ghost mt-3" onClick={() => setManualMode(false)}>
+              <ChevronLeft size={14} aria-hidden="true" /> Scegli dai segnalibri
+            </button>
+          )}
         </form>
       )}
 

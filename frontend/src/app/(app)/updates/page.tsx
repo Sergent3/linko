@@ -419,6 +419,7 @@ export default function UpdatesPage() {
 
       {showWizard && (
         <AddSourceWizard
+          sources={sourceList}
           initialUrl={wizardUrl}
           bookmarkId={wizardBookmarkId}
           onClose={() => setShowWizard(false)}
