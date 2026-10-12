@@ -52,6 +52,7 @@ export default function UpdatesPage() {
   const [showWizard, setShowWizard] = useState(false);
   const [wizardUrl, setWizardUrl] = useState('');
   const [wizardBookmarkId, setWizardBookmarkId] = useState<string | undefined>();
+  const [wizardTitle, setWizardTitle] = useState('');
 
   // Stato iniziale dall'URL: ?source=…&view=all, oppure apertura del wizard (?add_url=…&bookmark=…)
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function UpdatesPage() {
     if (addUrl) {
       setWizardUrl(addUrl);
       setWizardBookmarkId(params.get('bookmark') ?? undefined);
+      setWizardTitle(params.get('add_title') ?? '');
       setShowWizard(true);
     }
     setReady(true);
@@ -219,6 +221,7 @@ export default function UpdatesPage() {
   function openWizard() {
     setWizardUrl('');
     setWizardBookmarkId(undefined);
+    setWizardTitle('');
     setShowWizard(true);
   }
 
@@ -421,6 +424,7 @@ export default function UpdatesPage() {
         <AddSourceWizard
           sources={sourceList}
           initialUrl={wizardUrl}
+          initialTitle={wizardTitle}
           bookmarkId={wizardBookmarkId}
           onClose={() => setShowWizard(false)}
           onCreated={() => { loadSources(); ui.toast('Fonte aggiunta: il primo controllo avverrà entro un minuto'); }}

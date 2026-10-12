@@ -12,6 +12,7 @@ interface Props {
   /** Fonti già seguite: i segnalibri corrispondenti vengono segnalati */
   sources?: WatchSource[];
   initialUrl?: string;
+  initialTitle?: string;
   bookmarkId?: string;
 }
 
@@ -98,11 +99,11 @@ function Choice({
   );
 }
 
-export default function AddSourceWizard({ onClose, onCreated, sources = [], initialUrl = '', bookmarkId: initialBookmarkId }: Props) {
+export default function AddSourceWizard({ onClose, onCreated, sources = [], initialUrl = '', initialTitle = '', bookmarkId: initialBookmarkId }: Props) {
   const [step, setStep] = useState<Step>('url');
   const [url, setUrl] = useState(initialUrl);
   const [bookmarkId, setBookmarkId] = useState<string | undefined>(initialBookmarkId);
-  const [bookmarkTitle, setBookmarkTitle] = useState('');
+  const [bookmarkTitle, setBookmarkTitle] = useState(initialTitle);
   const [allBookmarks, setAllBookmarks] = useState<Bookmark[] | null>(null);
   const [query, setQuery] = useState('');
   const [manualMode, setManualMode] = useState(false);
@@ -390,6 +391,11 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
 
       {step === 'area' && (
         <fieldset>
+          {sources.some((x) => (bookmarkId && x.bookmarkId === bookmarkId) || sameUrl(x.url, url) || (finalUrl && sameUrl(x.url, finalUrl))) && (
+            <p className="text-xs mb-4 px-3 py-2 rounded-md" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
+              Segui già questo sito: puoi aggiungere un altro feed o un&apos;altra area.
+            </p>
+          )}
           <legend className="sr-only">Cosa monitorare</legend>
           {feeds.length > 0 && (
             <>
