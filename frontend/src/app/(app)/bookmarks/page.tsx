@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Inbox, Archive, Download, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Inbox, Archive, Download, LogOut, Rss } from 'lucide-react';
 import BookmarkWidget from '@/components/bookmarks/BookmarkWidget';
 import CommandPalette from '@/components/CommandPalette';
 import AddBookmarkModal from '@/components/bookmarks/AddBookmarkModal';
 import BookmarkletTools from '@/components/bookmarks/BookmarkletTools';
 import TrashWidget from '@/components/bookmarks/TrashWidget';
-import { bookmarks as bookmarksApi, folders as foldersApi } from '@/lib/api';
+import { bookmarks as bookmarksApi, folders as foldersApi, watchApi } from '@/lib/api';
 import { useSearch } from '@/contexts/SearchContext';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Bookmark, Folder } from '@/types/api';
@@ -33,6 +34,7 @@ export default function BookmarksDashboardPage() {
   const [viewMode, setViewMode] = useState<'inbox' | 'archive'>('inbox');
   const [trashedBookmarks, setTrashedBookmarks] = useState<Bookmark[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ folderId: string; name: string; count: number } | null>(null);
+  const [updatesUnread, setUpdatesUnread] = useState(0);
 
   // Valori pre-compilati dal bookmarklet (intercettati dai query params)
   const [bookmarkletUrl, setBookmarkletUrl] = useState('');
@@ -87,6 +89,13 @@ export default function BookmarksDashboardPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Contatore non letti della sezione Aggiornamenti
+  useEffect(() => {
+    watchApi.sources()
+      .then((list) => setUpdatesUnread(list.reduce((n, s) => n + s.unreadCount, 0)))
+      .catch(() => {});
+  }, []);
 
   /* ── Auto-scroll durante drag ────────────────────────────────────────────
    * L'API HTML5 drag non scrolla la finestra automaticamente.
@@ -367,6 +376,19 @@ export default function BookmarksDashboardPage() {
             </span>
           ))}
         </div>
+
+        <Link
+          href="/updates"
+          className="btn-add"
+          style={{ flexShrink: 0, marginRight: 6, background: '#444' }}
+          title="Aggiornamenti delle fonti monitorate"
+        >
+          <Rss size={13} />
+          Aggiornamenti
+          {updatesUnread > 0 && (
+            <span style={{ background: 'var(--accent)', borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{updatesUnread}</span>
+          )}
+        </Link>
 
         <button
           className="btn-add"

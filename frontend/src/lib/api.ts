@@ -7,6 +7,11 @@ import type {
   Folder,
   ImportResult,
   Tag,
+  CreateWatchSourceDto,
+  WatchItem,
+  WatchItemListResponse,
+  WatchPreview,
+  WatchSource,
 } from '@/types/api';
 
 const BASE = '/api/v1';
@@ -223,4 +228,43 @@ export const importApi = {
     fd.append('file', file);
     return request<ImportResult>('/import', { method: 'POST', body: fd });
   },
+};
+
+// ── Aggiornamenti (monitoraggio fonti) ─────────────────────────────────────────
+
+export const watchApi = {
+  preview: (url: string, selector?: string) =>
+    request<WatchPreview>('/watch/preview', {
+      method: 'POST',
+      body: JSON.stringify({ url, selector }),
+    }),
+
+  sources: () => request<WatchSource[]>('/watch/sources'),
+
+  createSource: (dto: CreateWatchSourceDto) =>
+    request<WatchSource>('/watch/sources', { method: 'POST', body: JSON.stringify(dto) }),
+
+  updateSource: (id: string, dto: Partial<Pick<WatchSource, 'name' | 'selector' | 'filter' | 'intervalMinutes' | 'isActive'>>) =>
+    request<WatchSource>(`/watch/sources/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+
+  deleteSource: (id: string) => request<void>(`/watch/sources/${id}`, { method: 'DELETE' }),
+
+  checkNow: (id: string) => request<WatchSource>(`/watch/sources/${id}/check`, { method: 'POST' }),
+
+  items: (filters: { page?: number; limit?: number; sourceId?: string; unread?: boolean } = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) params.set(k, String(v));
+    });
+    const qs = params.toString();
+    return request<WatchItemListResponse>(`/watch/items${qs ? `?${qs}` : ''}`);
+  },
+
+  updateItem: (id: string, dto: Partial<Pick<WatchItem, 'isRead' | 'isHidden'>>) =>
+    request<WatchItem>(`/watch/items/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+
+  readAll: (sourceId?: string) =>
+    request<{ updated: number }>('/watch/items/read-all', { method: 'POST', body: JSON.stringify({ sourceId }) }),
+
+  saveItem: (id: string) => request<WatchItem>(`/watch/items/${id}/save`, { method: 'POST' }),
 };

@@ -84,3 +84,78 @@ export interface ApiError {
   message: string;
   status: number;
 }
+
+// ── Aggiornamenti (monitoraggio fonti) ─────────────────────────────────────────
+
+export type WatchStatus = 'PENDING' | 'OK' | 'ERROR';
+
+export interface WatchSource {
+  id: string;
+  name: string;
+  url: string;
+  kind: 'SITE' | 'FORUM';
+  mode: 'AREA' | 'FEED';
+  selector: string | null;
+  filter: string;
+  intervalMinutes: number;
+  currentIntervalMinutes: number;
+  isActive: boolean;
+  status: WatchStatus;
+  lastError: string | null;
+  failCount: number;
+  lastCheckedAt: string | null;
+  nextCheckAt: string;
+  bookmarkId: string | null;
+  createdAt: string;
+  unreadCount: number;
+}
+
+export interface WatchItem {
+  id: string;
+  sourceId: string;
+  url: string;
+  title: string;
+  publishedAt: string | null;
+  kind: 'NEW' | 'UPDATED';
+  matchedTerms: string[];
+  isRead: boolean;
+  isHidden: boolean;
+  savedBookmarkId: string | null;
+  firstSeenAt: string;
+  source: { id: string; name: string; kind: 'SITE' | 'FORUM' };
+}
+
+export interface WatchItemListResponse {
+  data: WatchItem[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface ExtractedItem {
+  title: string;
+  url: string;
+  publishedAt?: string;
+}
+
+export interface SuggestedArea {
+  selector: string;
+  label: string;
+  itemCount: number;
+  sample: ExtractedItem[];
+  isNavigation: boolean;
+}
+
+export interface WatchPreview {
+  finalUrl: string;
+  status: number;
+  areas: SuggestedArea[];
+  items: ExtractedItem[];
+}
+
+export interface CreateWatchSourceDto {
+  name: string;
+  url: string;
+  selector: string;
+  filter?: string;
+  intervalMinutes: number;
+  bookmarkId?: string;
+}
