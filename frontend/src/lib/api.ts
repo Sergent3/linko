@@ -9,6 +9,7 @@ import type {
   Tag,
   CreateWatchSourceDto,
   WatchItem,
+  WatchItemContent,
   WatchItemListResponse,
   WatchPreview,
   WatchSource,
@@ -274,9 +275,17 @@ export const watchApi = {
 
   deleteSource: (id: string) => request<void>(`/watch/sources/${id}`, { method: 'DELETE' }),
 
+  /** Salva l'ordine personalizzato delle fonti (tutti gli id, nell'ordine voluto). */
+  reorderSources: (ids: string[]) =>
+    request<WatchSource[]>('/watch/sources/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
+
+  /** Rinomina una categoria su tutte le sue fonti; con to = null la toglie. */
+  renameCategory: (from: string, to: string | null) =>
+    request<{ updated: number }>('/watch/categories/rename', { method: 'POST', body: JSON.stringify({ from, to }) }),
+
   checkNow: (id: string) => request<WatchSource>(`/watch/sources/${id}/check`, { method: 'POST' }),
 
-  items: (filters: { page?: number; limit?: number; sourceId?: string; domain?: string; unread?: boolean } = {}) => {
+  items: (filters: { page?: number; limit?: number; sourceId?: string; domain?: string; category?: string; unread?: boolean } = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {
       if (v !== undefined && v !== null) params.set(k, String(v));
@@ -288,10 +297,13 @@ export const watchApi = {
   updateItem: (id: string, dto: Partial<Pick<WatchItem, 'isRead' | 'isHidden'>>) =>
     request<WatchItem>(`/watch/items/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
 
-  readAll: (scope: { sourceId?: string; domain?: string } = {}) =>
+  readAll: (scope: { sourceId?: string; domain?: string; category?: string } = {}) =>
     request<{ updated: number }>('/watch/items/read-all', { method: 'POST', body: JSON.stringify(scope) }),
 
   saveItem: (id: string) => request<WatchItem>(`/watch/items/${id}/save`, { method: 'POST' }),
+
+  /** Post o articolo da leggere nell'anteprima. */
+  itemContent: (id: string) => request<WatchItemContent>(`/watch/items/${id}/content`),
 
   // Accessi ai siti con login (cookie di sessione)
   credentials: () => request<SiteCredential[]>('/watch/credentials'),

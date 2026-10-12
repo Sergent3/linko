@@ -184,6 +184,8 @@ model WatchSource {
   selector   String? // mode AREA
   feedUrl    String? // mode FEED
   filter     String    @default("") // sintassi in worker/src/watch/filter.ts
+  category   String? // categoria scelta dall'utente (Riviste, Forum…)
+  position   Int       @default(0) // ordine personalizzato nella colonna Fonti
 
   // Frequenza: base scelta dall'utente, corrente adattata all'attività
   intervalMinutes        Int @default(360)

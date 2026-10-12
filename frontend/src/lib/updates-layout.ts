@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /** Preferenze di layout della pagina Aggiornamenti, salvate nel browser. */
+export type SourceSort = 'custom' | 'unread' | 'name' | 'recent';
+
 export interface UpdatesLayout {
   /** Larghezza della colonna Fonti su desktop (px) */
   sidebarWidth: number;
@@ -22,6 +24,10 @@ export interface UpdatesLayout {
   groupSimilar: boolean;
   /** Siti (con più fonti) chiusi nella colonna Fonti */
   collapsedSites: string[];
+  /** Categorie chiuse ("-" = senza categoria) */
+  collapsedCategories: string[];
+  /** Ordine della colonna Fonti */
+  sourceSort: SourceSort;
 }
 
 export const SIDEBAR_MIN = 200;
@@ -41,6 +47,8 @@ const DEFAULTS: UpdatesLayout = {
   compact: false,
   groupSimilar: true,
   collapsedSites: [],
+  collapsedCategories: [],
+  sourceSort: 'custom',
 };
 
 const STORAGE_KEY = 'linko_updates_layout';
@@ -61,6 +69,8 @@ export function useUpdatesLayout(): [UpdatesLayout, (patch: Partial<UpdatesLayou
           ...merged,
           sidebarWidth: clampWidth(Number(merged.sidebarWidth) || SIDEBAR_DEFAULT),
           collapsedSites: Array.isArray(merged.collapsedSites) ? merged.collapsedSites.filter((x) => typeof x === 'string') : [],
+          collapsedCategories: Array.isArray(merged.collapsedCategories) ? merged.collapsedCategories.filter((x) => typeof x === 'string') : [],
+          sourceSort: (['custom', 'unread', 'name', 'recent'] as const).includes(merged.sourceSort) ? merged.sourceSort : 'custom',
           sidebarHeight: merged.sidebarHeight == null ? null : clampHeight(Number(merged.sidebarHeight) || LIST_MIN_HEIGHT),
         });
       }

@@ -5,6 +5,8 @@ import {
   listItemsSchema,
   previewSchema,
   readAllSchema,
+  renameCategorySchema,
+  reorderSourcesSchema,
   saveCredentialSchema,
   updateItemSchema,
   updateSourceSchema,
@@ -31,6 +33,20 @@ watchRouter.get('/sources', async (req, res, next) => {
 watchRouter.post('/sources', async (req, res, next) => {
   try {
     res.status(201).json(await service.createSource(createSourceSchema.parse(req.body), req.user.id));
+  } catch (err) { next(err); }
+});
+
+// Prima di /sources/:id
+watchRouter.put('/sources/order', async (req, res, next) => {
+  try {
+    res.json(await service.reorderSources(reorderSourcesSchema.parse(req.body).ids, req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.post('/categories/rename', async (req, res, next) => {
+  try {
+    const { from, to } = renameCategorySchema.parse(req.body);
+    res.json(await service.renameCategory(from, to, req.user.id));
   } catch (err) { next(err); }
 });
 
@@ -70,14 +86,19 @@ watchRouter.get('/items', async (req, res, next) => {
 // Prima di /items/:id, altrimenti "read-all" verrebbe letto come id
 watchRouter.post('/items/read-all', async (req, res, next) => {
   try {
-    const { sourceId, domain } = readAllSchema.parse(req.body ?? {});
-    res.json(await service.markAllRead(req.user.id, sourceId, domain));
+    res.json(await service.markAllRead(req.user.id, readAllSchema.parse(req.body ?? {})));
   } catch (err) { next(err); }
 });
 
 watchRouter.patch('/items/:id', async (req, res, next) => {
   try {
     res.json(await service.updateItem(req.params.id, updateItemSchema.parse(req.body), req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.get('/items/:id/content', async (req, res, next) => {
+  try {
+    res.json(await service.itemContent(req.params.id, req.user.id));
   } catch (err) { next(err); }
 });
 

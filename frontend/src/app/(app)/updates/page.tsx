@@ -5,15 +5,17 @@ import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
   ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
+  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import Modal from '@/components/ui/Modal';
+import ItemPreview from '@/components/updates/ItemPreview';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
 import { groupItems, type ItemGroup } from '@/lib/group-items';
 import {
-  clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout,
+  clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout, type SourceSort,
 } from '@/lib/updates-layout';
 import type { SiteCredential, WatchItem, WatchSource } from '@/types/api';
 
@@ -74,16 +76,34 @@ function fold(s: string): string {
 
 const SHORTCUTS: { keys: string[]; label: string }[] = [
   { keys: ['j', 'k'], label: 'Aggiornamento successivo / precedente' },
-  { keys: ['o', 'Invio'], label: 'Apri (e segna come letto)' },
+  { keys: ['o', 'Invio'], label: 'Apri sul sito (e segna come letto)' },
+  { keys: ['p'], label: 'Anteprima senza lasciare Linko' },
   { keys: ['m'], label: 'Segna come letto / non letto' },
   { keys: ['s'], label: 'Salva tra i segnalibri' },
   { keys: ['h'], label: 'Nascondi' },
   { keys: ['x'], label: 'Apri o chiudi un gruppo accorpato' },
   { keys: ['u'], label: 'Passa tra Tutti e Non letti' },
   { keys: ['/'], label: 'Cerca tra le fonti' },
+  { keys: ['Alt+↑', 'Alt+↓'], label: 'Sposta la fonte selezionata (ordine personalizzato)' },
   { keys: ['Esc'], label: 'Esci dalla ricerca o dalla selezione' },
   { keys: ['?'], label: 'Mostra questi tasti' },
 ];
+
+const SORTS: { value: SourceSort; label: string }[] = [
+  { value: 'custom', label: 'Personalizzato (trascina)' },
+  { value: 'unread', label: 'Più non letti' },
+  { value: 'name', label: 'Nome' },
+  { value: 'recent', label: 'Aggiunte di recente' },
+];
+
+const NO_CATEGORY = '-';
+
+function byPosition(a: WatchSource, b: WatchSource): number {
+  return a.position - b.position || a.createdAt.localeCompare(b.createdAt);
+}
+
+interface SiteGroup { site: string; sources: WatchSource[]; unread: number }
+interface Section { category: string | null; groups: SiteGroup[]; unread: number; count: number }
 
 function every(minutes: number): string {
   return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
@@ -151,6 +171,8 @@ export default function UpdatesPage() {
   const [activeSource, setActiveSource] = useState<string | null>(null);
   // In alternativa a una fonte: tutte le fonti dello stesso sito
   const [activeSite, setActiveSite] = useState<string | null>(null);
+  // In alternativa: tutte le fonti di una categoria ("-" = senza categoria)
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -168,6 +190,16 @@ export default function UpdatesPage() {
   // Riga selezionata con la tastiera (id elemento, o giorno|chiave per un gruppo)
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  // Categorie appena create, ancora senza fonti (esistono finché non ci si sposta qualcosa)
+  const [pendingCategories, setPendingCategories] = useState<string[]>([]);
+  // Trascinamento delle fonti: id trascinati e destinazione evidenziata
+  const dragIds = useRef<string[] | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Anteprima: id dell'elemento aperto (l'oggetto si rilegge dagli elementi caricati)
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewStash = useRef<WatchItem | null>(null);
   // Gruppi aperti, per giorno + chiave del gruppo
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -186,6 +218,7 @@ export default function UpdatesPage() {
     const params = new URLSearchParams(window.location.search);
     setActiveSource(params.get('source'));
     setActiveSite(params.get('source') ? null : params.get('site'));
+    setActiveCategory(params.get('source') || params.get('site') ? null : params.get('category'));
     setOnlyUnread(params.get('view') === 'unread');
     const addUrl = params.get('add_url');
     if (addUrl) {
@@ -202,10 +235,11 @@ export default function UpdatesPage() {
     const params = new URLSearchParams();
     if (activeSource) params.set('source', activeSource);
     else if (activeSite) params.set('site', activeSite);
+    else if (activeCategory) params.set('category', activeCategory);
     if (onlyUnread) params.set('view', 'unread');
     const qs = params.toString();
     window.history.replaceState({}, '', qs ? `/updates?${qs}` : '/updates');
-  }, [ready, activeSource, activeSite, onlyUnread]);
+  }, [ready, activeSource, activeSite, activeCategory, onlyUnread]);
 
   const loadSources = useCallback(async () => {
     try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
@@ -216,7 +250,10 @@ export default function UpdatesPage() {
     setLoading(true);
     try {
       const res = await watchApi.items({
-        page: p, limit: PAGE_SIZE, sourceId: activeSource ?? undefined, domain: activeSource ? undefined : activeSite ?? undefined, unread: onlyUnread ? true : undefined,
+        page: p,
+        limit: PAGE_SIZE,
+        ...(activeSource ? { sourceId: activeSource } : activeSite ? { domain: activeSite } : activeCategory ? { category: activeCategory } : {}),
+        unread: onlyUnread ? true : undefined,
       });
       setItems((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
       setTotal(res.meta.total);
@@ -226,7 +263,7 @@ export default function UpdatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeSource, activeSite, onlyUnread, ui]);
+  }, [activeSource, activeSite, activeCategory, onlyUnread, ui]);
 
   useEffect(() => { loadSources(); }, [loadSources]);
   useEffect(() => { if (ready) loadItems(1); }, [ready, loadItems]);
@@ -355,7 +392,9 @@ export default function UpdatesPage() {
 
   async function readAll() {
     try {
-      await watchApi.readAll(activeSource ? { sourceId: activeSource } : activeSite ? { domain: activeSite } : {});
+      await watchApi.readAll(
+        activeSource ? { sourceId: activeSource } : activeSite ? { domain: activeSite } : activeCategory ? { category: activeCategory } : {},
+      );
       loadItems(1);
       loadSources();
     } catch {
@@ -377,19 +416,221 @@ export default function UpdatesPage() {
   }, [sourceList]);
   const currentGroup = !current && activeSite ? groups.find((g) => g.site === activeSite) ?? null : null;
 
-  // Ricerca nella colonna Fonti: per nome, indirizzo o sito
+  // Colonna Fonti: categorie → siti → fonti, nell'ordine scelto
+  const sortMode = layout.sourceSort;
+  const sections = useMemo<Section[]>(() => {
+    const list = [...sourceList];
+    if (sortMode === 'unread') list.sort((a, b) => b.unreadCount - a.unreadCount || byPosition(a, b));
+    else if (sortMode === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }));
+    else if (sortMode === 'recent') list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    else list.sort(byPosition);
+
+    const byCategory = new Map<string | null, Map<string, WatchSource[]>>();
+    for (const c of pendingCategories) byCategory.set(c, new Map());
+    for (const s of list) {
+      const cat = s.category ?? null;
+      const sites = byCategory.get(cat) ?? new Map<string, WatchSource[]>();
+      byCategory.set(cat, sites);
+      const site = siteOf(s.url);
+      sites.set(site, [...(sites.get(site) ?? []), s]);
+    }
+    const out = [...byCategory].map(([category, sites]) => {
+      const siteGroups = [...sites].map(([site, srcs]) => ({ site, sources: srcs, unread: srcs.reduce((n, x) => n + x.unreadCount, 0) }));
+      if (sortMode === 'unread') siteGroups.sort((a, b) => b.unread - a.unread);
+      if (sortMode === 'name') siteGroups.sort((a, b) => a.site.localeCompare(b.site, 'it'));
+      return {
+        category,
+        groups: siteGroups,
+        unread: siteGroups.reduce((n, g) => n + g.unread, 0),
+        count: siteGroups.reduce((n, g) => n + g.sources.length, 0),
+      };
+    });
+    // Senza categoria sempre in fondo; nell'ordine personalizzato le categorie seguono le loro fonti
+    out.sort((a, b) => {
+      if (a.category === null || b.category === null) return (a.category === null ? 1 : 0) - (b.category === null ? 1 : 0);
+      return sortMode === 'custom' ? 0 : a.category.localeCompare(b.category, 'it');
+    });
+    return out;
+  }, [sourceList, sortMode, pendingCategories]);
+  const hasCategories = sections.some((sec) => sec.category !== null);
+  const categoryNames = sections.flatMap((sec) => (sec.category ? [sec.category] : []));
+
+  // Ricerca nella colonna Fonti: per nome, indirizzo, sito o categoria
   const query = fold(sourceQuery.trim());
-  const visibleGroups = useMemo(() => {
-    if (!query) return groups;
-    return groups
-      .map((g) => ({
-        ...g,
-        sources: fold(g.site).includes(query)
-          ? g.sources
-          : g.sources.filter((s) => fold(s.name).includes(query) || fold(s.url).includes(query)),
-      }))
-      .filter((g) => g.sources.length > 0);
-  }, [groups, query]);
+  const visibleSections = useMemo(() => {
+    if (!query) return sections;
+    return sections
+      .map((sec) => {
+        if (sec.category && fold(sec.category).includes(query)) return sec;
+        const groupsF = sec.groups
+          .map((g) => ({
+            ...g,
+            sources: fold(g.site).includes(query)
+              ? g.sources
+              : g.sources.filter((s) => fold(s.name).includes(query) || fold(s.url).includes(query)),
+          }))
+          .filter((g) => g.sources.length > 0);
+        return { ...sec, groups: groupsF };
+      })
+      .filter((sec) => sec.groups.length > 0);
+  }, [sections, query]);
+  const visibleGroups = visibleSections.flatMap((sec) => sec.groups);
+  const flatVisibleSources = visibleGroups.flatMap((g) => g.sources);
+
+  function toggleCategory(key: string) {
+    const set = new Set(layout.collapsedCategories);
+    if (set.has(key)) set.delete(key); else set.add(key);
+    updateLayout({ collapsedCategories: [...set] });
+  }
+
+  function selectCategory(category: string) {
+    setActiveCategory(category);
+    setActiveSource(null);
+    setActiveSite(null);
+  }
+
+  /**
+   * Sposta fonti: before = id davanti a cui metterle ('END' in fondo, null = ordine invariato);
+   * category = nuova categoria (undefined = invariata). Il riordino vale solo nell'ordine personalizzato.
+   */
+  async function moveSources(ids: string[], before: string | 'END' | null, category?: string | null) {
+    const all = sources ?? [];
+    const changeCat = category === undefined ? [] : ids.filter((id) => (all.find((s) => s.id === id)?.category ?? null) !== category);
+    let order: string[] | null = null;
+    if (before !== null && sortMode === 'custom' && !ids.includes(before)) {
+      const rest = [...all].sort(byPosition).map((s) => s.id).filter((id) => !ids.includes(id));
+      const at = before === 'END' ? rest.length : rest.indexOf(before);
+      rest.splice(at < 0 ? rest.length : at, 0, ...ids);
+      order = rest;
+      if (order.every((id, i) => all.find((s) => s.id === id)?.position === i)) order = null;
+    }
+    if (!order && changeCat.length === 0) return;
+    const previous = sources;
+    setSources((prev) => prev && prev.map((s) => ({
+      ...s,
+      ...(order && { position: order.indexOf(s.id) }),
+      ...(changeCat.includes(s.id) && { category: category ?? null }),
+    })));
+    if (category) setPendingCategories((prev) => prev.filter((c) => c !== category));
+    try {
+      if (changeCat.length) await Promise.all(changeCat.map((id) => watchApi.updateSource(id, { category: category ?? null })));
+      if (order) await watchApi.reorderSources(order);
+      if (changeCat.length) ui.toast(category ? `Spostat${changeCat.length === 1 ? 'a' : 'e'} in “${category}”` : 'Categoria tolta');
+    } catch {
+      setSources(previous);
+      ui.toast('Spostamento non riuscito. Riprova.', { kind: 'error' });
+    }
+  }
+
+  // Props per il trascinamento: cosa si trascina e dove si può lasciare
+  function dragProps(ids: string[]) {
+    return {
+      draggable: true,
+      onDragStart: (e: React.DragEvent) => {
+        dragIds.current = ids;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', ids.join(','));
+      },
+      onDragEnd: () => { dragIds.current = null; setDropTarget(null); },
+    };
+  }
+
+  function dropProps(key: string, onDrop: (ids: string[]) => void) {
+    return {
+      onDragOver: (e: React.DragEvent) => {
+        if (!dragIds.current) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dropTarget !== key) setDropTarget(key);
+      },
+      onDragLeave: (e: React.DragEvent) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((t) => (t === key ? null : t));
+      },
+      onDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        const ids = dragIds.current;
+        dragIds.current = null;
+        setDropTarget(null);
+        if (ids) onDrop(ids);
+      },
+    };
+  }
+
+  /** Alt+↑/↓ su una fonte: la sposta nell'ordine personalizzato (anche tra categorie). */
+  function moveByKeyboard(e: React.KeyboardEvent, s: WatchSource) {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+    e.preventDefault();
+    if (sortMode !== 'custom') {
+      ui.toast('Per spostare le fonti scegli l’ordine “Personalizzato”');
+      return;
+    }
+    const idx = flatVisibleSources.findIndex((x) => x.id === s.id);
+    const target = e.key === 'ArrowUp' ? flatVisibleSources[idx - 1] : flatVisibleSources[idx + 1];
+    if (!target) return;
+    const before = e.key === 'ArrowUp' ? target.id : flatVisibleSources[idx + 2]?.id ?? 'END';
+    moveSources([s.id], before, target.category ?? null).then(() => {
+      setTimeout(() => document.querySelector<HTMLButtonElement>(`[data-source-btn="${CSS.escape(s.id)}"]`)?.focus(), 0);
+    });
+  }
+
+  async function newCategory() {
+    setSortMenuOpen(false);
+    const name = (await ui.prompt({ title: 'Nuova categoria', label: 'Nome', placeholder: 'es. Riviste, Forum, News', confirmLabel: 'Crea' }))?.trim();
+    if (!name) return;
+    if (name.length > 40) { ui.toast('Nome troppo lungo (max 40 caratteri)', { kind: 'error' }); return; }
+    if (!categoryNames.includes(name)) setPendingCategories((prev) => [...prev, name]);
+    ui.toast(`Categoria “${name}” creata: trascinaci dentro le fonti, o sceglila modificando una fonte`);
+  }
+
+  async function renameCategory(from: string) {
+    const to = (await ui.prompt({ title: 'Rinomina categoria', label: 'Nome', initialValue: from, confirmLabel: 'Rinomina' }))?.trim();
+    if (to === undefined || to === from) return;
+    if (!to) return removeCategory(from);
+    if (to.length > 40) { ui.toast('Nome troppo lungo (max 40 caratteri)', { kind: 'error' }); return; }
+    if (pendingCategories.includes(from)) {
+      setPendingCategories((prev) => prev.map((c) => (c === from ? to : c)));
+      return;
+    }
+    try {
+      await watchApi.renameCategory(from, to);
+      setSources((prev) => prev && prev.map((s) => (s.category === from ? { ...s, category: to } : s)));
+      if (activeCategory === from) setActiveCategory(to);
+      ui.toast(categoryNames.includes(to) ? `Fonti unite in “${to}”` : 'Categoria rinominata');
+    } catch {
+      ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  async function removeCategory(name: string) {
+    if (pendingCategories.includes(name)) {
+      setPendingCategories((prev) => prev.filter((c) => c !== name));
+      return;
+    }
+    const ok = await ui.confirm({
+      title: 'Togliere la categoria?',
+      message: <>Le fonti di <strong>{name}</strong> restano, senza categoria.</>,
+      confirmLabel: 'Togli categoria',
+    });
+    if (!ok) return;
+    try {
+      await watchApi.renameCategory(name, null);
+      setSources((prev) => prev && prev.map((s) => (s.category === name ? { ...s, category: null } : s)));
+      if (activeCategory === name) setActiveCategory(null);
+      ui.toast('Categoria tolta');
+    } catch {
+      ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  // Chiusura del menu Ordina con click esterno o Esc
+  useEffect(() => {
+    if (!sortMenuOpen) return;
+    const onDown = (e: MouseEvent) => { if (!sortMenuRef.current?.contains(e.target as Node)) setSortMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSortMenuOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [sortMenuOpen]);
 
   function toggleSite(site: string) {
     const set = new Set(layout.collapsedSites);
@@ -400,11 +641,13 @@ export default function UpdatesPage() {
   function selectSource(id: string | null) {
     setActiveSource(id);
     setActiveSite(null);
+    setActiveCategory(null);
   }
 
   function selectSite(site: string) {
     setActiveSite(site);
     setActiveSource(null);
+    setActiveCategory(null);
   }
 
   async function toggleActive(s: WatchSource) {
@@ -484,6 +727,21 @@ export default function UpdatesPage() {
     return g.thread && unread.length > 0 ? unread[unread.length - 1] : g.items[0];
   }
 
+  // Anteprima: l'elemento si rilegge dalla lista (stato letto/salvato aggiornato)
+  const previewItem = previewId
+    ? items.find((i) => i.id === previewId) ?? (previewStash.current?.id === previewId ? previewStash.current : null)
+    : null;
+
+  function openPreview(it: WatchItem) {
+    previewStash.current = it;
+    setPreviewId(it.id);
+    setRead(it, true);
+  }
+
+  function closePreview() {
+    setPreviewId(null);
+  }
+
   // Il gestore viene riletto a ogni render: usa sempre lo stato aggiornato
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
@@ -496,7 +754,10 @@ export default function UpdatesPage() {
     const row = idx >= 0 ? navRows[idx] : null;
     const move = (to: number) => {
       if (navRows.length === 0) return;
-      setCursorId(navRows[Math.max(0, Math.min(navRows.length - 1, to))].id);
+      const next = navRows[Math.max(0, Math.min(navRows.length - 1, to))];
+      setCursorId(next.id);
+      // Con l'anteprima aperta, j/k sfogliano gli aggiornamenti
+      if (previewId) openPreview(next.item ?? groupTarget(next.group));
     };
 
     switch (e.key) {
@@ -546,8 +807,17 @@ export default function UpdatesPage() {
         if (!layout.sidebarOpen) updateLayout({ sidebarOpen: true });
         setTimeout(() => sourceSearchRef.current?.focus(), 0);
         break;
+      case 'p': {
+        if (!row) return;
+        e.preventDefault();
+        const target = row.item ?? groupTarget(row.group);
+        if (previewId === target.id) closePreview(); else openPreview(target);
+        break;
+      }
       case '?': e.preventDefault(); setShowShortcuts(true); break;
-      case 'Escape': setCursorId(null); break;
+      case 'Escape':
+        if (previewId) closePreview(); else setCursorId(null);
+        break;
     }
   };
 
@@ -563,6 +833,101 @@ export default function UpdatesPage() {
     document.querySelector(`[data-row="${CSS.escape(cursorId)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [cursorId]);
 
+  /* ── Colonna Fonti: un sito con le sue fonti ─────────────────────────────── */
+  function renderSiteGroup(g: SiteGroup, category: string | null, indent: number) {
+    const multi = g.sources.length > 1;
+    const collapsed = multi && !query && layout.collapsedSites.includes(g.site);
+    const reorderable = sortMode === 'custom';
+    const groupKey = `g:${category ?? NO_CATEGORY}|${g.site}`;
+    return (
+      <li key={g.site}>
+        {multi && (
+          <div
+            className={`bookmark-item ${dropTarget === groupKey ? 'drop-before' : ''}`}
+            style={{ paddingLeft: 4 + indent }}
+            aria-current={activeSite === g.site ? 'true' : undefined}
+            {...dragProps(g.sources.map((x) => x.id))}
+            {...dropProps(groupKey, (ids) => moveSources(ids, reorderable ? g.sources[0].id : null, category))}
+          >
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm shrink-0"
+              onClick={() => toggleSite(g.site)}
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? `Mostra le fonti di ${g.site}` : `Nascondi le fonti di ${g.site}`}
+              title={collapsed ? 'Espandi' : 'Comprimi'}
+            >
+              {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+              style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
+              title={`Tutte le ${g.sources.length} fonti di ${g.site}${reorderable ? ' · trascina per spostarle' : ''}`}
+              onClick={() => selectSite(g.site)}
+            >
+              <SiteIcon site={g.site} />
+              <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
+              <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
+              {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
+            </button>
+          </div>
+        )}
+        {!collapsed && (
+          <ul style={{ listStyle: 'none' }} aria-label={multi ? `Fonti di ${g.site}` : undefined}>
+            {g.sources.map((s) => {
+              const key = `s:${s.id}`;
+              return (
+                <li key={s.id}>
+                  <div
+                    className={`bookmark-item ${dropTarget === key ? 'drop-before' : ''}`}
+                    style={{ opacity: s.isActive ? 1 : 0.55, paddingLeft: (multi ? 30 : 14) + indent }}
+                    aria-current={activeSource === s.id ? 'true' : undefined}
+                    {...dragProps([s.id])}
+                    {...dropProps(key, (ids) => moveSources(ids, reorderable ? s.id : null, category))}
+                  >
+                    {reorderable && <GripVertical size={12} className="drag-grip" aria-hidden="true" />}
+                    <button
+                      type="button"
+                      data-source-btn={s.id}
+                      className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                      style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                      title={`${s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}${reorderable ? ' · trascina o Alt+↑/↓ per spostare' : ''}`}
+                      onClick={() => selectSource(s.id)}
+                      onKeyDown={(e) => moveByKeyboard(e, s)}
+                    >
+                      {s.status === 'ERROR'
+                        ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
+                        : !s.isActive
+                          ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
+                          : !multi
+                            ? <SiteIcon site={g.site} />
+                            : s.mode === 'FEED'
+                              ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
+                              : s.mode === 'THREAD'
+                                ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
+                                : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
+                      <span className="bookmark-title" style={layout.wrapSourceNames ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : undefined}>{s.name}</span>
+                      {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
+                    </button>
+                    <span className="row-actions">
+                      <button type="button" className="icon-btn icon-btn-sm" onClick={() => setEditingSource(s)} aria-label={`Modifica ${s.name}`} title="Modifica">
+                        <Pencil size={13} aria-hidden="true" />
+                      </button>
+                      <button type="button" className="icon-btn icon-btn-sm icon-btn-danger" onClick={() => remove(s)} aria-label={`Smetti di seguire ${s.name}`} title="Smetti di seguire">
+                        <Trash2 size={13} aria-hidden="true" />
+                      </button>
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </li>
+    );
+  }
+
   /* ── Righe della timeline ────────────────────────────────────────────────── */
   const rowPad = layout.compact ? '6px 6px 6px 14px' : '10px 6px 10px 14px';
   const titleClass = `${layout.wrapTitles ? 'block break-words' : 'block truncate'} ${layout.compact ? 'text-[13px]' : 'text-[14px]'} hover:underline`;
@@ -572,7 +937,13 @@ export default function UpdatesPage() {
       <li
         key={it.id}
         data-row={it.id}
-        className={`bookmark-item ${cursorId === it.id ? 'kbd-cursor' : ''}`}
+        className={`bookmark-item ${cursorId === it.id ? 'kbd-cursor' : ''} ${previewId === it.id ? 'is-previewed' : ''}`}
+        onClick={(e) => {
+          // Un clic sulla riga (non su link o pulsanti) apre l'anteprima
+          if ((e.target as HTMLElement).closest('a, button')) return;
+          setCursorId(it.id);
+          openPreview(it);
+        }}
         style={{ padding: nested ? rowPad.replace(/14px$/, '38px') : rowPad, borderTop: '1px solid var(--border)', alignItems: 'flex-start' }}
       >
         <span
@@ -602,6 +973,9 @@ export default function UpdatesPage() {
           </div>
         </div>
         <span className="row-actions">
+          <button type="button" className="icon-btn" onClick={() => { setCursorId(it.id); openPreview(it); }} aria-label="Anteprima" title="Anteprima (p)">
+            <Eye size={15} aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="icon-btn"
@@ -636,7 +1010,16 @@ export default function UpdatesPage() {
       : `${g.items.length} volte`;
     return (
       <li key={g.key} style={{ borderTop: '1px solid var(--border)' }}>
-        <div data-row={id} className={`bookmark-item ${cursorId === id ? 'kbd-cursor' : ''}`} style={{ padding: rowPad, alignItems: 'flex-start' }}>
+        <div
+          data-row={id}
+          className={`bookmark-item ${cursorId === id ? 'kbd-cursor' : ''} ${previewId === target.id ? 'is-previewed' : ''}`}
+          style={{ padding: rowPad, alignItems: 'flex-start' }}
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest('a, button')) return;
+            setCursorId(id);
+            openPreview(target);
+          }}
+        >
           <span
             className="mt-1.5 shrink-0 rounded-full"
             style={{ width: 7, height: 7, background: unread.length > 0 ? 'var(--accent)' : 'transparent' }}
@@ -674,6 +1057,9 @@ export default function UpdatesPage() {
             </div>
           </div>
           <span className="row-actions">
+            <button type="button" className="icon-btn" onClick={() => { setCursorId(id); openPreview(target); }} aria-label="Anteprima" title={g.thread ? 'Anteprima del primo post da leggere (p)' : 'Anteprima (p)'}>
+              <Eye size={15} aria-hidden="true" />
+            </button>
             <button
               type="button"
               className="icon-btn"
@@ -695,7 +1081,7 @@ export default function UpdatesPage() {
 
   /* ── Render ──────────────────────────────────────────────────────────────── */
   return (
-    <>
+    <div className={previewItem ? 'has-preview' : undefined}>
       <div className="toolbar">
         <h1 className="page-title mr-2">Aggiornamenti</h1>
         <div className="tabs" role="tablist" aria-label="Filtro">
@@ -791,6 +1177,40 @@ export default function UpdatesPage() {
         <nav aria-label="Fonti" className="card overflow-hidden">
           <div className="card-header flex items-center">
             <span className="flex-1">Fonti</span>
+            <div className="relative" ref={sortMenuRef}>
+              <button
+                type="button"
+                className="icon-btn icon-btn-sm"
+                aria-haspopup="menu"
+                aria-expanded={sortMenuOpen}
+                aria-label="Ordina e organizza le fonti"
+                title={`Ordina: ${SORTS.find((x) => x.value === sortMode)?.label}`}
+                onClick={() => setSortMenuOpen((o) => !o)}
+              >
+                <ArrowUpDown size={14} aria-hidden="true" />
+              </button>
+              {sortMenuOpen && (
+                <div className="menu right-0 mt-2" role="menu" style={{ minWidth: 230 }}>
+                  <div className="px-2.5 py-1.5 text-xs text-fg-faint">Ordina le fonti</div>
+                  {SORTS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={sortMode === o.value}
+                      className="menu-item"
+                      onClick={() => { updateLayout({ sourceSort: o.value }); setSortMenuOpen(false); }}
+                    >
+                      <Check size={15} aria-hidden="true" style={{ opacity: sortMode === o.value ? 1 : 0 }} /> {o.label}
+                    </button>
+                  ))}
+                  <div className="menu-sep" />
+                  <button type="button" role="menuitem" className="menu-item" onClick={newCategory}>
+                    <FolderPlus size={15} aria-hidden="true" /> Nuova categoria…
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               className="icon-btn icon-btn-sm"
@@ -819,6 +1239,7 @@ export default function UpdatesPage() {
                 // Invio apre la prima fonte trovata
                 if (e.key === 'Enter') {
                   const first = visibleGroups[0];
+                  if (!first && visibleSections[0]?.category) selectCategory(visibleSections[0].category);
                   if (first) {
                     if (first.sources.length === 1) selectSource(first.sources[0].id); else selectSite(first.site);
                   }
@@ -841,103 +1262,71 @@ export default function UpdatesPage() {
                 type="button"
                 className="bookmark-item w-full text-left"
                 style={{ border: 'none', font: 'inherit', cursor: 'pointer' }}
-                aria-current={activeSource === null && activeSite === null ? 'true' : undefined}
+                aria-current={activeSource === null && activeSite === null && activeCategory === null ? 'true' : undefined}
                 onClick={() => selectSource(null)}
               >
                 <span className="bookmark-title">Tutte le fonti</span>
                 {totalUnread > 0 && <span className="badge">{totalUnread}</span>}
               </button>
             </li>
-            {visibleGroups.map((g) => {
-              const multi = (groups.find((x) => x.site === g.site)?.sources.length ?? 0) > 1;
-              const collapsed = multi && !query && layout.collapsedSites.includes(g.site);
+            {visibleSections.map((sec) => {
+              const catKey = sec.category ?? NO_CATEGORY;
+              const catCollapsed = hasCategories && !query && layout.collapsedCategories.includes(catKey);
+              const dropKey = `c:${catKey}`;
               return (
-              <li key={g.site}>
-                {multi && (
-                  <div className="bookmark-item" style={{ paddingLeft: 4 }} aria-current={activeSite === g.site ? 'true' : undefined}>
-                    <button
-                      type="button"
-                      className="icon-btn icon-btn-sm shrink-0"
-                      onClick={() => toggleSite(g.site)}
-                      aria-expanded={!collapsed}
-                      aria-label={collapsed ? `Mostra le fonti di ${g.site}` : `Nascondi le fonti di ${g.site}`}
-                      title={collapsed ? 'Espandi' : 'Comprimi'}
+                <li key={catKey}>
+                  {hasCategories && (
+                    <div
+                      className={`bookmark-item category-row ${dropTarget === dropKey ? 'drop-into' : ''}`}
+                      aria-current={activeCategory === catKey ? 'true' : undefined}
+                      {...dropProps(dropKey, (ids) => moveSources(ids, null, sec.category))}
                     >
-                      {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-                    </button>
-                    <button
-                      type="button"
-                      className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
-                      style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
-                      title={`Tutte le ${g.sources.length} fonti di ${g.site}`}
-                      onClick={() => selectSite(g.site)}
-                    >
-                      <SiteIcon site={g.site} />
-                      <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
-                      <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
-                      {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
-                    </button>
-                  </div>
-                )}
-                {!collapsed && (
-                <ul style={{ listStyle: 'none' }} aria-label={multi ? `Fonti di ${g.site}` : undefined}>
-                  {g.sources.map((s) => (
-                    <li key={s.id}>
-                      <div
-                        className="bookmark-item"
-                        style={{ opacity: s.isActive ? 1 : 0.55, paddingLeft: multi ? 30 : undefined }}
-                        aria-current={activeSource === s.id ? 'true' : undefined}
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn-sm shrink-0"
+                        onClick={() => toggleCategory(catKey)}
+                        aria-expanded={!catCollapsed}
+                        aria-label={catCollapsed ? `Mostra ${sec.category ?? 'le fonti senza categoria'}` : `Nascondi ${sec.category ?? 'le fonti senza categoria'}`}
+                        title={catCollapsed ? 'Espandi' : 'Comprimi'}
                       >
-                        <button
-                          type="button"
-                          className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
-                          style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
-                          title={s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}
-                          onClick={() => selectSource(s.id)}
-                        >
-                          {s.status === 'ERROR'
-                            ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
-                            : !s.isActive
-                              ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
-                              : !multi
-                                ? <SiteIcon site={g.site} />
-                                : s.mode === 'FEED'
-                                  ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
-                                  : s.mode === 'THREAD'
-                                    ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
-                                    : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
-                          <span className="bookmark-title" style={layout.wrapSourceNames ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : undefined}>{s.name}</span>
-                          {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
-                        </button>
+                        {catCollapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                      </button>
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                        style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                        onClick={() => selectCategory(catKey)}
+                        title={sec.category ? `Tutti gli aggiornamenti di “${sec.category}”` : 'Fonti senza categoria'}
+                      >
+                        <Folder size={14} className="shrink-0 text-fg-faint" aria-hidden="true" />
+                        <span className="bookmark-title text-xs font-semibold uppercase tracking-wider">{sec.category ?? 'Senza categoria'}</span>
+                        <span className="text-xs text-fg-faint tabular-nums">{sec.count}</span>
+                        {sec.unread > 0 && <span className="badge badge-soft">{sec.unread}</span>}
+                      </button>
+                      {sec.category && (
                         <span className="row-actions">
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn-sm"
-                            onClick={() => setEditingSource(s)}
-                            aria-label={`Modifica ${s.name}`}
-                            title="Modifica"
-                          >
+                          <button type="button" className="icon-btn icon-btn-sm" onClick={() => renameCategory(sec.category!)} aria-label={`Rinomina ${sec.category}`} title="Rinomina">
                             <Pencil size={13} aria-hidden="true" />
                           </button>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn-sm icon-btn-danger"
-                            onClick={() => remove(s)}
-                            aria-label={`Smetti di seguire ${s.name}`}
-                            title="Smetti di seguire"
-                          >
-                            <Trash2 size={13} aria-hidden="true" />
+                          <button type="button" className="icon-btn icon-btn-sm" onClick={() => removeCategory(sec.category!)} aria-label={`Togli la categoria ${sec.category}`} title="Togli la categoria (le fonti restano)">
+                            <X size={13} aria-hidden="true" />
                           </button>
                         </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                )}
-              </li>
+                      )}
+                    </div>
+                  )}
+                  {!catCollapsed && sec.groups.length === 0 && (
+                    <p className="px-3.5 py-2 text-xs text-fg-faint" style={{ paddingLeft: 36 }}>Trascina qui le fonti</p>
+                  )}
+                  {!catCollapsed && sec.groups.length > 0 && (
+                    <ul style={{ listStyle: 'none' }} aria-label={sec.category ?? (hasCategories ? 'Senza categoria' : undefined)}>
+                      {sec.groups.map((g) => renderSiteGroup(g, sec.category, hasCategories ? 14 : 0))}
+                    </ul>
+                  )}
+                </li>
               );
             })}
-            {query && visibleGroups.length === 0 && (
+            {query && visibleSections.length === 0 && (
               <li className="px-3.5 py-2.5 text-xs text-fg-muted">Nessuna fonte corrisponde a “{sourceQuery.trim()}”.</li>
             )}
             {sources?.length === 0 && (
@@ -983,6 +1372,27 @@ export default function UpdatesPage() {
               </Link>
             </div>
           ))}
+          {!current && !currentGroup && activeCategory && (
+            <div className="card flex items-center gap-3 px-4 py-3 mb-4">
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-fg-strong flex items-center gap-2">
+                  <Folder size={15} className="text-fg-faint" aria-hidden="true" />
+                  {activeCategory === NO_CATEGORY ? 'Senza categoria' : activeCategory}
+                </h2>
+                <p className="text-xs text-fg-muted mt-0.5">
+                  {(() => {
+                    const list = sourceList.filter((x) => (x.category ?? NO_CATEGORY) === activeCategory);
+                    return `${list.length} ${list.length === 1 ? 'fonte' : 'fonti'}: ${list.map((x) => x.name).join(' · ')}`;
+                  })()}
+                </p>
+              </div>
+              {activeCategory !== NO_CATEGORY && (
+                <button type="button" className="icon-btn" onClick={() => renameCategory(activeCategory)} aria-label="Rinomina categoria" title="Rinomina">
+                  <Pencil size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
           {currentGroup && (
             <div className="card px-4 py-3 mb-4">
               <h2 className="font-semibold text-fg-strong flex items-center gap-2" translate="no">
@@ -1127,6 +1537,15 @@ export default function UpdatesPage() {
           }}
         />
       )}
-    </>
+      {previewItem && (
+        <ItemPreview
+          key={previewItem.id}
+          item={previewItem}
+          onClose={closePreview}
+          onSave={save}
+          onMarkUnread={(it) => { setRead(it, false); closePreview(); }}
+        />
+      )}
+    </div>
   );
 }

@@ -98,6 +98,8 @@ export interface WatchSource {
   selector: string | null;
   feedUrl: string | null;
   filter: string;
+  category: string | null;
+  position: number;
   intervalMinutes: number;
   currentIntervalMinutes: number;
   isActive: boolean;
@@ -124,6 +126,16 @@ export interface WatchItem {
   savedBookmarkId: string | null;
   firstSeenAt: string;
   source: { id: string; name: string; kind: 'SITE' | 'FORUM'; mode: 'AREA' | 'FEED' | 'THREAD' };
+}
+
+/** Contenuto di un elemento per l'anteprima (HTML già ripulito dal backend). */
+export interface WatchItemContent {
+  url: string;
+  title: string;
+  author?: string;
+  publishedAt?: string;
+  image?: string;
+  html: string;
 }
 
 export interface WatchItemListResponse {
@@ -209,6 +221,7 @@ export interface UpdateWatchSourceDto {
   kind?: 'SITE' | 'FORUM';
   filter?: string;
   intervalMinutes?: number;
+  category?: string | null;
   isActive?: boolean;
 }
 
@@ -222,5 +235,6 @@ export interface CreateWatchSourceDto {
   kind?: 'SITE' | 'FORUM';
   filter?: string;
   intervalMinutes: number;
+  category?: string | null;
   bookmarkId?: string;
 }

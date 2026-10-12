@@ -6,7 +6,8 @@ import { createBookmark } from '../bookmarks/bookmarks.service';
 import { config } from '../../config';
 import { encrypt, loadKey } from '../../utils/secret-box';
 import { cleanUserAgent, CookieInputError, domainOf, parseCookieInput } from './cookies';
-import type { CreateSourceDto, ListItemsDto, PreviewDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
+import { sanitizeContent } from './content';
+import type { CreateSourceDto, ListItemsDto, PreviewDto, ReadAllDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
 
 const PREVIEW_TIMEOUT_MS = 30_000;
 
@@ -54,7 +55,7 @@ export async function preview(dto: PreviewDto, userId: string) {
 export async function listSources(userId: string) {
   const sources = await prisma.watchSource.findMany({
     where: { userId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
   });
   const unread = await prisma.watchItem.groupBy({
     by: ['sourceId'],
@@ -70,9 +71,13 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
     const bm = await prisma.bookmark.findFirst({ where: { id: dto.bookmarkId, userId, deletedAt: null } });
     if (!bm) throw new AppError(404, 'Segnalibro non trovato');
   }
+  // Le nuove fonti vanno in fondo all'ordine personalizzato
+  const last = await prisma.watchSource.aggregate({ where: { userId }, _max: { position: true } });
   return prisma.watchSource.create({
     data: {
       userId,
+      position: (last._max.position ?? -1) + 1,
+      category: dto.category ?? null,
       name: dto.name,
       url: dto.url,
       kind: dto.kind,
@@ -119,6 +124,27 @@ export async function updateSource(id: string, dto: UpdateSourceDto, userId: str
   });
 }
 
+/** Salva l'ordine personalizzato: gli id non elencati finiscono in coda, nel loro ordine attuale. */
+export async function reorderSources(ids: string[], userId: string) {
+  const sources = await prisma.watchSource.findMany({
+    where: { userId },
+    select: { id: true },
+    orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+  });
+  const own = new Set(sources.map((s) => s.id));
+  const listed = [...new Set(ids.filter((id) => own.has(id)))];
+  const rest = sources.map((s) => s.id).filter((id) => !listed.includes(id));
+  const order = [...listed, ...rest];
+  await prisma.$transaction(order.map((id, position) => prisma.watchSource.update({ where: { id }, data: { position } })));
+  return listSources(userId);
+}
+
+/** Rinomina una categoria su tutte le fonti dell'utente; con "to" null la toglie. */
+export async function renameCategory(from: string, to: string | null, userId: string) {
+  const { count } = await prisma.watchSource.updateMany({ where: { userId, category: from }, data: { category: to } });
+  return { updated: count };
+}
+
 export async function deleteSource(id: string, userId: string) {
   await assertSource(id, userId);
   await prisma.watchSource.delete({ where: { id } });
@@ -139,6 +165,20 @@ export async function listChecks(id: string, userId: string) {
 // Elementi
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Fonti selezionate da un filtro di elenco: una fonte, un sito o una categoria ("-" = senza categoria). */
+async function scopeFor(userId: string, f: { sourceId?: string; domain?: string; category?: string }) {
+  if (f.sourceId) return { sourceId: f.sourceId };
+  if (f.domain) return { sourceId: { in: await sourceIdsForDomain(userId, f.domain) } };
+  if (f.category) {
+    const sources = await prisma.watchSource.findMany({
+      where: { userId, category: f.category === '-' ? null : f.category },
+      select: { id: true },
+    });
+    return { sourceId: { in: sources.map((s) => s.id) } };
+  }
+  return {};
+}
+
 /** Id delle fonti dell'utente che appartengono al sito (host senza www). */
 async function sourceIdsForDomain(userId: string, domain: string): Promise<string[]> {
   const target = domain.toLowerCase().replace(/^www\./, '');
@@ -154,8 +194,7 @@ export async function listItems(dto: ListItemsDto, userId: string) {
   const where = {
     userId,
     isHidden: false,
-    ...(dto.sourceId && { sourceId: dto.sourceId }),
-    ...(!dto.sourceId && dto.domain && { sourceId: { in: await sourceIdsForDomain(userId, dto.domain) } }),
+    ...(await scopeFor(userId, dto)),
     ...(dto.unread !== undefined && { isRead: !dto.unread }),
   };
   const [data, total] = await Promise.all([
@@ -176,15 +215,36 @@ export async function updateItem(id: string, dto: UpdateItemDto, userId: string)
   return prisma.watchItem.update({ where: { id }, data: dto });
 }
 
-export async function markAllRead(userId: string, sourceId?: string, domain?: string) {
-  const scope = sourceId
-    ? { sourceId }
-    : domain ? { sourceId: { in: await sourceIdsForDomain(userId, domain) } } : {};
+export async function markAllRead(userId: string, filter: ReadAllDto = {}) {
+  const scope = await scopeFor(userId, filter);
   const { count } = await prisma.watchItem.updateMany({
     where: { userId, isRead: false, ...scope },
     data: { isRead: true },
   });
   return { updated: count };
+}
+
+/**
+ * Contenuto dell'elemento da leggere senza lasciare Linko: il worker scarica la
+ * pagina (con i cookie del sito) ed estrae il post o l'articolo; qui viene
+ * ripulito prima di arrivare al browser.
+ */
+export async function itemContent(id: string, userId: string) {
+  const item = await assertItem(id, userId);
+  const job = await watchQueue.add(
+    'content',
+    { type: 'content', url: item.url, userId },
+    { removeOnComplete: { age: 60 }, removeOnFail: { age: 60 }, attempts: 1 },
+  );
+  let raw: { url: string; title: string; author?: string; publishedAt?: string; image?: string; html: string };
+  try {
+    raw = await job.waitUntilFinished(watchQueueEvents, PREVIEW_TIMEOUT_MS);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (/timed out/i.test(msg)) throw new AppError(504, 'La pagina non ha risposto in tempo');
+    throw new AppError(422, msg);
+  }
+  return { ...raw, html: sanitizeContent(raw.html, raw.url) };
 }
 
 /** Salva l'elemento come segnalibro; se l'URL è già tra i segnalibri, lo collega. */

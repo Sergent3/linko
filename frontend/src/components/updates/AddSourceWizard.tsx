@@ -137,6 +137,8 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [name, setName] = useState(editing?.name ?? '');
   const [filter, setFilter] = useState(editing?.filter ?? '');
   const [intervalMinutes, setIntervalMinutes] = useState(editing?.intervalMinutes ?? DEFAULT_SITE_INTERVAL);
+  const [category, setCategory] = useState(editing?.category ?? '');
+  const categories = [...new Set(sources.map((s) => s.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'it'));
   const [forum, setForum] = useState<string | null>(editing?.kind === 'FORUM' ? 'forum' : null);
   const [auth, setAuth] = useState<WatchPreview['auth']>();
   // Mostra il modulo per incollare il cookie (sito bloccato o pagine riservate)
@@ -284,6 +286,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
           name: name.trim(),
           filter: filter.trim(),
           intervalMinutes,
+          category: category.trim() || null,
           ...(retarget && {
             url: finalUrl || url.trim(),
             kind: forum ? 'FORUM' as const : 'SITE' as const,
@@ -301,6 +304,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         kind: forum ? 'FORUM' : 'SITE',
         filter: filter.trim(),
         intervalMinutes,
+        category: category.trim() || null,
         bookmarkId,
       });
       onCreated(source);
@@ -629,6 +633,23 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
               : ''}
             Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 10 minuti).
           </p>
+
+          <label className="field-label mt-5" htmlFor="watch-category">Categoria (facoltativa)</label>
+          <input
+            id="watch-category"
+            name="category"
+            className="input"
+            autoComplete="off"
+            maxLength={40}
+            list="watch-categories"
+            value={category}
+            placeholder="es. Riviste, Forum, News…"
+            onChange={(e) => setCategory(e.target.value)}
+          />
+          <datalist id="watch-categories">
+            {categories.map((c) => <option key={c} value={c} />)}
+          </datalist>
+          <p className="field-hint">Le fonti della stessa categoria compaiono insieme nella colonna Fonti.</p>
 
           <label className="field-label mt-5" htmlFor="watch-filter">Filtro (facoltativo)</label>
           <input

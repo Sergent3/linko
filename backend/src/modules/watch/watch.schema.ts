@@ -10,6 +10,15 @@ const interval = z.coerce
 
 const selector = z.string().trim().min(1).max(500);
 const filter = z.string().max(500);
+// Categoria della fonte: stringa vuota o null la tolgono
+const category = z
+  .string()
+  .trim()
+  .max(40, 'Nome della categoria troppo lungo (max 40 caratteri)')
+  .nullable()
+  .transform((v) => (v ? v : null));
+// Filtro per categoria negli elenchi: "-" indica le fonti senza categoria
+const categoryFilter = z.string().trim().min(1).max(40);
 
 export const previewSchema = z.object({
   url: z.string().url('URL non valido'),
@@ -27,6 +36,7 @@ export const createSourceSchema = z
     kind: z.enum(['SITE', 'FORUM']).default('SITE'),
     filter: filter.default(''),
     intervalMinutes: interval.default(60),
+    category: category.optional(),
     bookmarkId: z.string().cuid().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length === 1, {
@@ -45,6 +55,7 @@ export const updateSourceSchema = z
     kind: z.enum(['SITE', 'FORUM']).optional(),
     filter: filter.optional(),
     intervalMinutes: interval.optional(),
+    category: category.optional(),
     isActive: z.boolean().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length <= 1, {
@@ -58,6 +69,7 @@ export const listItemsSchema = z.object({
   sourceId: z.string().cuid().optional(),
   // Tutte le fonti dello stesso sito (host senza www)
   domain: z.string().trim().min(3).max(253).regex(/^[a-z0-9.-]+$/i, 'Dominio non valido').optional(),
+  category: categoryFilter.optional(),
   unread: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
@@ -87,11 +99,24 @@ export const updateItemSchema = z.object({
 export const readAllSchema = z.object({
   sourceId: z.string().cuid().optional(),
   domain: z.string().trim().min(3).max(253).regex(/^[a-z0-9.-]+$/i, 'Dominio non valido').optional(),
+  category: categoryFilter.optional(),
+});
+
+// Nuovo ordine personalizzato: tutti gli id delle fonti nell'ordine voluto
+export const reorderSourcesSchema = z.object({
+  ids: z.array(z.string().cuid()).min(1).max(1000),
+});
+
+// Rinomina (o elimina, con "to" vuoto) una categoria su tutte le sue fonti
+export const renameCategorySchema = z.object({
+  from: z.string().trim().min(1).max(40),
+  to: category,
 });
 
 export type PreviewDto = z.infer<typeof previewSchema>;
 export type CreateSourceDto = z.infer<typeof createSourceSchema>;
 export type UpdateSourceDto = z.infer<typeof updateSourceSchema>;
 export type ListItemsDto = z.infer<typeof listItemsSchema>;
+export type ReadAllDto = z.infer<typeof readAllSchema>;
 export type UpdateItemDto = z.infer<typeof updateItemSchema>;
 export type SaveCredentialDto = z.infer<typeof saveCredentialSchema>;

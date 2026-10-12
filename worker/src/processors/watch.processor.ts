@@ -24,6 +24,7 @@ import { applyFilter, parseFilter } from '../watch/filter';
 import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
 import { detectForum } from '../watch/platform';
 import { latestUrl, parseThread, threadBase } from '../watch/thread';
+import { extractContent, type ItemContent } from '../watch/content';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -38,6 +39,7 @@ export type WatchJobData =
   | { type: 'check'; sourceId: string }
   | { type: 'preview'; url: string; selector?: string; userId?: string }
   | { type: 'verify'; userId: string; credentialId: string; url: string }
+  | { type: 'content'; userId: string; url: string }
   | { type: 'cleanup' };
 
 export interface FoundFeed {
@@ -353,6 +355,15 @@ async function verify(userId: string, credentialId: string, url: string): Promis
 
 // ── cleanup ───────────────────────────────────────────────────────────────────
 
+/** Post o articolo da leggere nell'anteprima, scaricato con i cookie dell'utente. */
+async function content(url: string, userId: string): Promise<ItemContent> {
+  const auths = await loadAuths(userId);
+  const page = await fetchPage(url, auths);
+  await assessAuth(page, auths);
+  if (page.status >= 400) throw new Error(httpErrorMessage(page.status, 'La pagina'));
+  return extractContent(page.html, page.url, url);
+}
+
 async function cleanup(): Promise<void> {
   // Gli elementi trovati restano per sempre (si eliminano solo con la fonte): si pulisce solo il registro dei controlli
   const now = Date.now();
@@ -374,6 +385,8 @@ export function createWatchProcessor(queue: Queue) {
         return preview(job.data.url, job.data.selector, job.data.userId);
       case 'verify':
         return verify(job.data.userId, job.data.credentialId, job.data.url);
+      case 'content':
+        return content(job.data.url, job.data.userId);
       case 'cleanup':
         return cleanup();
     }

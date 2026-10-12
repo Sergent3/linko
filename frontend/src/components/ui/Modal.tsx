@@ -31,7 +31,8 @@ export default function Modal({ title, onClose, children, footer, width = 440, d
     const panel = panelRef.current;
     // Mette a fuoco il primo campo (o il pannello) all'apertura
     const first = panel?.querySelector<HTMLElement>('[data-autofocus]') ?? panel?.querySelector<HTMLElement>(FOCUSABLE);
-    (first ?? panel)?.focus();
+    // preventScroll: il focus non deve far scorrere la pagina sotto la finestra
+    (first ?? panel)?.focus({ preventScroll: true });
 
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -54,7 +55,7 @@ export default function Modal({ title, onClose, children, footer, width = 440, d
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
-      previouslyFocused?.focus?.();
+      previouslyFocused?.focus?.({ preventScroll: true });
     };
   }, []);
 
