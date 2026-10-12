@@ -5,7 +5,8 @@ import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIco
 import Modal from '@/components/ui/Modal';
 import CredentialForm from './CredentialForm';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
-import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchPreview, WatchSource } from '@/types/api';
+import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchDelivery, WatchPreview, WatchSource } from '@/types/api';
+import { DELIVERY_OPTIONS } from './NotificationsModal';
 
 interface Props {
   onClose: () => void;
@@ -138,6 +139,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [filter, setFilter] = useState(editing?.filter ?? '');
   const [intervalMinutes, setIntervalMinutes] = useState(editing?.intervalMinutes ?? DEFAULT_SITE_INTERVAL);
   const [category, setCategory] = useState(editing?.category ?? '');
+  const [delivery, setDelivery] = useState<WatchDelivery>(editing?.delivery ?? 'NORMAL');
   const categories = [...new Set(sources.map((s) => s.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'it'));
   const [forum, setForum] = useState<string | null>(editing?.kind === 'FORUM' ? 'forum' : null);
   const [auth, setAuth] = useState<WatchPreview['auth']>();
@@ -287,6 +289,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
           filter: filter.trim(),
           intervalMinutes,
           category: category.trim() || null,
+          delivery,
           ...(retarget && {
             url: finalUrl || url.trim(),
             kind: forum ? 'FORUM' as const : 'SITE' as const,
@@ -305,6 +308,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         filter: filter.trim(),
         intervalMinutes,
         category: category.trim() || null,
+          delivery,
         bookmarkId,
       });
       onCreated(source);
@@ -633,6 +637,16 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
               : ''}
             Se la lista si aggiorna più in fretta, Linko accorcia da solo l&apos;intervallo (fino a 10 minuti).
           </p>
+
+          <span className="field-label mt-5" id="watch-delivery-label">Novità</span>
+          <div className="tabs" role="radiogroup" aria-labelledby="watch-delivery-label">
+            {DELIVERY_OPTIONS.map((o) => (
+              <button key={o.value} type="button" role="radio" aria-checked={delivery === o.value} className="tab" onClick={() => setDelivery(o.value)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">{DELIVERY_OPTIONS.find((o) => o.value === delivery)?.hint}. Telegram si collega da “Notifiche” in Aggiornamenti.</p>
 
           <label className="field-label mt-5" htmlFor="watch-category">Categoria (facoltativa)</label>
           <input

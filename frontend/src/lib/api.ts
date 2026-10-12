@@ -10,6 +10,7 @@ import type {
   CreateWatchSourceDto,
   WatchItem,
   WatchItemContent,
+  NotificationSettings,
   WatchItemListResponse,
   WatchPreview,
   WatchSource,
@@ -254,6 +255,19 @@ export const importApi = {
     fd.append('file', file);
     return request<ImportResult>('/import', { method: 'POST', body: fd });
   },
+};
+
+// ── Notifiche (Telegram, parole chiave, riepilogo) ─────────────────────────────
+
+export const notificationsApi = {
+  get: () => request<NotificationSettings>('/notifications'),
+  update: (dto: { keywords?: string; digestHour?: number }) =>
+    request<NotificationSettings>('/notifications', { method: 'PATCH', body: JSON.stringify(dto) }),
+  setTelegramToken: (token: string) =>
+    request<NotificationSettings>('/notifications/telegram', { method: 'PUT', body: JSON.stringify({ token }) }),
+  linkTelegram: () => request<NotificationSettings>('/notifications/telegram/link', { method: 'POST' }),
+  testTelegram: () => request<{ ok: boolean }>('/notifications/telegram/test', { method: 'POST' }),
+  removeTelegram: () => request<NotificationSettings>('/notifications/telegram', { method: 'DELETE' }),
 };
 
 // ── Aggiornamenti (monitoraggio fonti) ─────────────────────────────────────────

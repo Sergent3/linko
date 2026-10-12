@@ -89,6 +89,20 @@ export interface ApiError {
 
 export type WatchStatus = 'PENDING' | 'OK' | 'ERROR';
 
+/** Come arrivano le novità: solo in Linko, anche subito su Telegram, o in un riepilogo al giorno. */
+export type WatchDelivery = 'NORMAL' | 'INSTANT' | 'DIGEST';
+
+export interface NotificationSettings {
+  telegram: { configured: boolean; bot: string | null; linked: boolean };
+  keywords: string;
+  digestHour: number;
+  nextDigestAt: string | null;
+  lastDigestAt: string | null;
+  instantSources: number;
+  digestSources: number;
+  chatName?: string;
+}
+
 export interface WatchSource {
   id: string;
   name: string;
@@ -100,6 +114,7 @@ export interface WatchSource {
   filter: string;
   category: string | null;
   position: number;
+  delivery: WatchDelivery;
   intervalMinutes: number;
   currentIntervalMinutes: number;
   isActive: boolean;
@@ -125,7 +140,7 @@ export interface WatchItem {
   isHidden: boolean;
   savedBookmarkId: string | null;
   firstSeenAt: string;
-  source: { id: string; name: string; kind: 'SITE' | 'FORUM'; mode: 'AREA' | 'FEED' | 'THREAD' };
+  source: { id: string; name: string; kind: 'SITE' | 'FORUM'; mode: 'AREA' | 'FEED' | 'THREAD'; delivery: WatchDelivery };
 }
 
 /** Contenuto di un elemento per l'anteprima (HTML già ripulito dal backend). */
@@ -222,6 +237,7 @@ export interface UpdateWatchSourceDto {
   filter?: string;
   intervalMinutes?: number;
   category?: string | null;
+  delivery?: WatchDelivery;
   isActive?: boolean;
 }
 
@@ -236,5 +252,6 @@ export interface CreateWatchSourceDto {
   filter?: string;
   intervalMinutes: number;
   category?: string | null;
+  delivery?: WatchDelivery;
   bookmarkId?: string;
 }

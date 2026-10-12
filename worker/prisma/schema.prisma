@@ -44,6 +44,7 @@ model User {
   watchSources  WatchSource[]
   watchItems    WatchItem[]
   siteCredentials SiteCredential[]
+  notificationSettings NotificationSettings?
 }
 
 model RefreshToken {
@@ -156,6 +157,12 @@ enum WatchKind {
   FORUM // thread filtrati per tag
 }
 
+enum WatchDelivery {
+  NORMAL
+  INSTANT
+  DIGEST
+}
+
 enum WatchMode {
   AREA // selettore CSS su pagina HTML
   FEED // feed RSS/Atom
@@ -186,6 +193,8 @@ model WatchSource {
   filter     String    @default("") // sintassi in worker/src/watch/filter.ts
   category   String? // categoria scelta dall'utente (Riviste, Forum…)
   position   Int       @default(0) // ordine personalizzato nella colonna Fonti
+  // Come arrivano le novità: solo in Linko, anche come notifica Telegram, o in un riepilogo al giorno
+  delivery   WatchDelivery @default(NORMAL)
 
   // Frequenza: base scelta dall'utente, corrente adattata all'attività
   intervalMinutes        Int @default(360)
@@ -276,3 +285,22 @@ model SiteCredential {
 
   @@unique([userId, domain])
 }
+
+/// Notifiche dell'utente: bot Telegram, parole chiave e ora del riepilogo giornaliero
+model NotificationSettings {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  telegramTokenEnc String? // token del bot, cifrato con WATCH_SECRET_KEY
+  telegramBot      String? // username del bot (senza @)
+  telegramChatId   String?
+  // Parole chiave (sintassi del filtro fonti): un elemento che corrisponde arriva subito, da qualunque fonte
+  keywords         String    @default("")
+  digestHour       Int       @default(8) // ora del riepilogo, fuso Europe/Rome
+  lastDigestAt     DateTime?
+  nextDigestAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+

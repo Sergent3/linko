@@ -14,6 +14,8 @@ const envSchema = z.object({
   BROWSER_WS_URL: z.string().url().optional(),
   // Chiave AES-256 in base64 per i cookie dei siti (SiteCredential)
   WATCH_SECRET_KEY: z.string().min(40),
+  // Indirizzo pubblico di Linko, per i link nelle notifiche Telegram
+  LINKO_PUBLIC_URL: z.string().url().optional(),
   WATCH_BLOCKED_IPS: z.string().default('').transform((s) => s.split(',').map((x) => x.trim()).filter(Boolean)),
 });
 

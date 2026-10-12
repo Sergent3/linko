@@ -10,6 +10,9 @@ const interval = z.coerce
 
 const selector = z.string().trim().min(1).max(500);
 const filter = z.string().max(500);
+// Come arrivano le novità della fonte (vedi worker/src/watch/notify.ts)
+const delivery = z.enum(['NORMAL', 'INSTANT', 'DIGEST']);
+
 // Categoria della fonte: stringa vuota o null la tolgono
 const category = z
   .string()
@@ -37,6 +40,7 @@ export const createSourceSchema = z
     filter: filter.default(''),
     intervalMinutes: interval.default(60),
     category: category.optional(),
+    delivery: delivery.default('NORMAL'),
     bookmarkId: z.string().cuid().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length === 1, {
@@ -56,6 +60,7 @@ export const updateSourceSchema = z
     filter: filter.optional(),
     intervalMinutes: interval.optional(),
     category: category.optional(),
+    delivery: delivery.optional(),
     isActive: z.boolean().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length <= 1, {

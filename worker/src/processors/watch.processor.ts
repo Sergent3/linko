@@ -25,6 +25,10 @@ import { feedCandidates, looksLikeFeed, parseFeed } from '../watch/feed';
 import { detectForum } from '../watch/platform';
 import { latestUrl, parseThread, threadBase } from '../watch/thread';
 import { extractContent, type ItemContent } from '../watch/content';
+import { notifyNew, runDigests } from '../watch/notify';
+import { botUsername, findPrivateChat, sendMessage, TelegramError } from '../watch/telegram';
+import { decrypt, loadKey } from '../lib/secret-box';
+import { config } from '../config';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -40,6 +44,8 @@ export type WatchJobData =
   | { type: 'preview'; url: string; selector?: string; userId?: string }
   | { type: 'verify'; userId: string; credentialId: string; url: string }
   | { type: 'content'; userId: string; url: string }
+  | { type: 'telegram'; action: 'verify'; token: string }
+  | { type: 'telegram'; action: 'link' | 'test'; userId: string }
   | { type: 'cleanup' };
 
 export interface FoundFeed {
@@ -106,6 +112,8 @@ export function nextInterval(base: number, current: number, found: number, fresh
 
 async function tick(queue: Queue): Promise<number> {
   const now = new Date();
+  // Riepiloghi giornalieri arrivati all'ora scelta
+  await runDigests(now).catch((err) => console.warn(`[notify] riepiloghi: ${(err as Error).message}`));
   const due = await prisma.watchSource.findMany({
     where: { isActive: true, nextCheckAt: { lte: now } },
     select: { id: true, currentIntervalMinutes: true },
@@ -198,6 +206,9 @@ async function check(sourceId: string): Promise<void> {
     );
     const fresh = matching.filter((x) => !existing.has(x.item.key));
     const now = new Date();
+    // Al primo controllo ciò che c'è già è lo stato di partenza, non una novità;
+    // per un forum con filtro, invece, i thread trovati sono proprio quelli cercati
+    const baseline = firstCheck && (source.kind === 'SITE' || !source.filter.trim());
 
     await prisma.$transaction([
       prisma.watchItem.createMany({
@@ -209,9 +220,7 @@ async function check(sourceId: string): Promise<void> {
           title: item.title,
           publishedAt: item.publishedAt ? new Date(item.publishedAt) : null,
           matchedTerms: result.matchedTerms,
-          // Al primo controllo ciò che c'è già è lo stato di partenza, non una novità;
-          // per un forum con filtro, invece, i thread trovati sono proprio quelli cercati
-          isRead: firstCheck && (source.kind === 'SITE' || !source.filter.trim()),
+          isRead: baseline,
         })),
         skipDuplicates: true,
       }),
@@ -232,6 +241,7 @@ async function check(sourceId: string): Promise<void> {
         data: { sourceId, durationMs: Date.now() - started, ok: true, itemsFound: found.length, newItems: fresh.length },
       }),
     ]);
+    if (!baseline) await notifyNew(source, fresh.map(({ item }) => ({ title: item.title, url: item.url })));
   } catch (err) {
     const message = (err as Error).message.slice(0, 500);
     // La scadenza del cookie non è un guasto del sito: non conta per la sospensione automatica
@@ -364,6 +374,32 @@ async function content(url: string, userId: string): Promise<ItemContent> {
   return extractContent(page.html, page.url, url);
 }
 
+// ── Telegram (configurazione dalle impostazioni) ───────────────────────────────
+
+let tgKey: Buffer | undefined;
+const tgSecret = () => (tgKey ??= loadKey(config.WATCH_SECRET_KEY));
+
+async function telegramJob(data: Extract<WatchJobData, { type: 'telegram' }>): Promise<unknown> {
+  try {
+    if (data.action === 'verify') return { bot: await botUsername(data.token) };
+    const s = await prisma.notificationSettings.findUnique({ where: { userId: data.userId } });
+    if (!s?.telegramTokenEnc) throw new TelegramError('Prima inserisci il token del bot');
+    const token = decrypt(s.telegramTokenEnc, tgSecret());
+    if (data.action === 'link') {
+      const chat = await findPrivateChat(token);
+      if (!chat) throw new TelegramError(`Apri il bot @${s.telegramBot} su Telegram, premi Avvia (o scrivigli un messaggio), poi riprova`);
+      return chat;
+    }
+    if (!s.telegramChatId) throw new TelegramError('Collega prima la chat di Telegram');
+    await sendMessage(token, s.telegramChatId, '✅ <b>Linko</b>: le notifiche funzionano. Qui riceverai le novità delle fonti scelte e il riepilogo giornaliero.');
+    return { ok: true };
+  } catch (err) {
+    // Messaggio leggibile per l'utente; gli errori di rete diventano un testo generico
+    if (err instanceof TelegramError) throw err;
+    throw new Error(`Telegram non raggiungibile: ${(err as Error).message}`);
+  }
+}
+
 async function cleanup(): Promise<void> {
   // Gli elementi trovati restano per sempre (si eliminano solo con la fonte): si pulisce solo il registro dei controlli
   const now = Date.now();
@@ -387,6 +423,8 @@ export function createWatchProcessor(queue: Queue) {
         return verify(job.data.userId, job.data.credentialId, job.data.url);
       case 'content':
         return content(job.data.url, job.data.userId);
+      case 'telegram':
+        return telegramJob(job.data);
       case 'cleanup':
         return cleanup();
     }

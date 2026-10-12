@@ -32,7 +32,8 @@ export default function AppHeader() {
   // Contatore non letti: all'avvio, ogni minuto e quando una pagina lo comunica
   useEffect(() => {
     const load = () => watchApi.sources()
-      .then((list) => setUnread(list.reduce((n, s) => n + s.unreadCount, 0)))
+      // Le fonti in riepilogo giornaliero non contano: arrivano una volta al giorno
+      .then((list) => setUnread(list.reduce((n, s) => n + (s.delivery === 'DIGEST' ? 0 : s.unreadCount), 0)))
       .catch(() => {});
     load();
     const t = setInterval(load, 60_000);

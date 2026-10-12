@@ -5,11 +5,12 @@ import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
   ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
-  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical,
+  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import Modal from '@/components/ui/Modal';
 import ItemPreview from '@/components/updates/ItemPreview';
+import NotificationsModal from '@/components/updates/NotificationsModal';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
@@ -190,6 +191,7 @@ export default function UpdatesPage() {
   // Riga selezionata con la tastiera (id elemento, o giorno|chiave per un gruppo)
   const [cursorId, setCursorId] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   // Categorie appena create, ancora senza fonti (esistono finché non ci si sposta qualcosa)
@@ -281,11 +283,13 @@ export default function UpdatesPage() {
     window.dispatchEvent(new Event(CREDENTIALS_CHANGED_EVENT));
   }, [expiredCreds.length]);
   const totalUnread = sourceList.reduce((s, x) => s + x.unreadCount, 0);
+  // Il contatore nell'intestazione non conta le fonti in riepilogo: arrivano una volta al giorno
+  const headerUnread = sourceList.reduce((s, x) => s + (x.delivery === 'DIGEST' ? 0 : x.unreadCount), 0);
 
   // Allinea il contatore nell'header (solo dopo il primo caricamento)
   useEffect(() => {
-    if (sources) window.dispatchEvent(new CustomEvent(WATCH_UNREAD_EVENT, { detail: totalUnread }));
-  }, [sources, totalUnread]);
+    if (sources) window.dispatchEvent(new CustomEvent(WATCH_UNREAD_EVENT, { detail: headerUnread }));
+  }, [sources, headerUnread]);
 
   const grouped = useMemo(() => {
     const days: { day: string; items: WatchItem[]; groups: ItemGroup[] }[] = [];
@@ -908,6 +912,8 @@ export default function UpdatesPage() {
                                 ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
                                 : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
                       <span className="bookmark-title" style={layout.wrapSourceNames ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : undefined}>{s.name}</span>
+                      {s.delivery === 'INSTANT' && <Bell size={12} className="shrink-0 text-fg-faint" aria-label="Notifica subito" />}
+                      {s.delivery === 'DIGEST' && <Newspaper size={12} className="shrink-0 text-fg-faint" aria-label="Riepilogo giornaliero" />}
                       {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
                     </button>
                     <span className="row-actions">
@@ -1005,9 +1011,11 @@ export default function UpdatesPage() {
     const unread = g.items.filter((i) => !i.isRead);
     const target = groupTarget(g);
     const sourceNames = [...new Set(g.items.map((i) => i.source.name))];
-    const count = g.thread
-      ? `${g.items.length} nuovi post`
-      : `${g.items.length} volte`;
+    const count = g.digest
+      ? `${g.items.length} novità del giorno`
+      : g.thread
+        ? `${g.items.length} nuovi post`
+        : `${g.items.length} volte`;
     return (
       <li key={g.key} style={{ borderTop: '1px solid var(--border)' }}>
         <div
@@ -1035,6 +1043,7 @@ export default function UpdatesPage() {
               onClick={() => setReadMany(g.items, true)}
               onAuxClick={(e) => { if (e.button === 1) setReadMany(g.items, true); }}
             >
+              {g.digest && <Newspaper size={13} className="inline mr-1.5 -mt-0.5 text-fg-faint" aria-hidden="true" />}
               {g.thread && <MessagesSquare size={13} className="inline mr-1.5 -mt-0.5 text-fg-faint" aria-hidden="true" />}
               {g.title}
             </a>
@@ -1089,6 +1098,15 @@ export default function UpdatesPage() {
           <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
         </div>
         <div className="flex-1" />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setShowNotifications(true)}
+          aria-label="Notifiche"
+          title="Notifiche: Telegram, parole chiave, riepilogo"
+        >
+          <Bell size={16} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="icon-btn hidden md:inline-flex"
@@ -1503,6 +1521,13 @@ export default function UpdatesPage() {
           bookmarkId={wizardBookmarkId}
           onClose={() => setShowWizard(false)}
           onCreated={() => { loadSources(); ui.toast('Fonte aggiunta: il primo controllo avverrà entro un minuto'); }}
+        />
+      )}
+      {showNotifications && (
+        <NotificationsModal
+          sources={[...sourceList].sort(byPosition)}
+          onClose={() => setShowNotifications(false)}
+          onSourceUpdated={(updated) => setSources((prev) => prev && prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))}
         />
       )}
       {showShortcuts && (

@@ -78,6 +78,7 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
       userId,
       position: (last._max.position ?? -1) + 1,
       category: dto.category ?? null,
+      delivery: dto.delivery,
       name: dto.name,
       url: dto.url,
       kind: dto.kind,
@@ -203,7 +204,7 @@ export async function listItems(dto: ListItemsDto, userId: string) {
       orderBy: { firstSeenAt: 'desc' },
       skip: (dto.page - 1) * dto.limit,
       take: dto.limit,
-      include: { source: { select: { id: true, name: true, kind: true, mode: true } } },
+      include: { source: { select: { id: true, name: true, kind: true, mode: true, delivery: true } } },
     }),
     prisma.watchItem.count({ where }),
   ]);

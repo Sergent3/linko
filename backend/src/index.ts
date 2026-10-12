@@ -10,6 +10,7 @@ import { foldersRouter } from './modules/folders/folders.router';
 import { tagsRouter } from './modules/tags/tags.router';
 import { importRouter } from './modules/import/import.router';
 import { watchRouter } from './modules/watch/watch.router';
+import { notificationsRouter } from './modules/notifications/notifications.router';
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use('/api/v1/folders', foldersRouter);
 app.use('/api/v1/tags', tagsRouter);
 app.use('/api/v1/import', importRouter);
 app.use('/api/v1/watch', watchRouter);
+app.use('/api/v1/notifications', notificationsRouter);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {

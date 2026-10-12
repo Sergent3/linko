@@ -22,6 +22,8 @@ export interface ItemGroup {
   items: WatchItem[];
   /** Post della stessa discussione (altrimenti: aggiornamenti con lo stesso titolo) */
   thread: boolean;
+  /** Novità del giorno di una fonte in riepilogo giornaliero */
+  digest?: boolean;
   title: string;
 }
 
@@ -33,6 +35,14 @@ export interface ItemGroup {
 export function groupItems(items: WatchItem[]): ItemGroup[] {
   const groups = new Map<string, ItemGroup>();
   for (const it of items) {
+    // Fonti in riepilogo: tutte le novità del giorno in una sola riga
+    if (it.source.delivery === 'DIGEST') {
+      const key = `d:${it.sourceId}`;
+      const g = groups.get(key);
+      if (g) g.items.push(it);
+      else groups.set(key, { key, items: [it], thread: false, digest: true, title: `Riepilogo · ${it.source.name}` });
+      continue;
+    }
     const thread = threadOf(it.url);
     const norm = normalizeTitle(it.title);
     const key = thread ? `t:${thread}` : `n:${norm || it.url}`;
