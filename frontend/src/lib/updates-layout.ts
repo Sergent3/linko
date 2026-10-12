@@ -20,6 +20,8 @@ export interface UpdatesLayout {
   compact: boolean;
   /** Accorpa gli aggiornamenti della stessa discussione o con lo stesso titolo */
   groupSimilar: boolean;
+  /** Siti (con più fonti) chiusi nella colonna Fonti */
+  collapsedSites: string[];
 }
 
 export const SIDEBAR_MIN = 200;
@@ -38,6 +40,7 @@ const DEFAULTS: UpdatesLayout = {
   wrapTitles: false,
   compact: false,
   groupSimilar: true,
+  collapsedSites: [],
 };
 
 const STORAGE_KEY = 'linko_updates_layout';
@@ -57,6 +60,7 @@ export function useUpdatesLayout(): [UpdatesLayout, (patch: Partial<UpdatesLayou
         setLayout({
           ...merged,
           sidebarWidth: clampWidth(Number(merged.sidebarWidth) || SIDEBAR_DEFAULT),
+          collapsedSites: Array.isArray(merged.collapsedSites) ? merged.collapsedSites.filter((x) => typeof x === 'string') : [],
           sidebarHeight: merged.sidebarHeight == null ? null : clampHeight(Number(merged.sidebarHeight) || LIST_MIN_HEIGHT),
         });
       }

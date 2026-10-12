@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
-  ChevronRight, SlidersHorizontal, PanelLeftClose, PanelLeftOpen,
+  ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
+import Modal from '@/components/ui/Modal';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
@@ -65,6 +66,24 @@ function SiteIcon({ site }: { site: string }) {
     />
   );
 }
+
+/** Testo confrontabile per la ricerca: minuscolo e senza accenti. */
+function fold(s: string): string {
+  return s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+const SHORTCUTS: { keys: string[]; label: string }[] = [
+  { keys: ['j', 'k'], label: 'Aggiornamento successivo / precedente' },
+  { keys: ['o', 'Invio'], label: 'Apri (e segna come letto)' },
+  { keys: ['m'], label: 'Segna come letto / non letto' },
+  { keys: ['s'], label: 'Salva tra i segnalibri' },
+  { keys: ['h'], label: 'Nascondi' },
+  { keys: ['x'], label: 'Apri o chiudi un gruppo accorpato' },
+  { keys: ['u'], label: 'Passa tra Tutti e Non letti' },
+  { keys: ['/'], label: 'Cerca tra le fonti' },
+  { keys: ['Esc'], label: 'Esci dalla ricerca o dalla selezione' },
+  { keys: ['?'], label: 'Mostra questi tasti' },
+];
 
 function every(minutes: number): string {
   return minutes >= 60 ? `${Math.round(minutes / 60)} h` : `${minutes} min`;
@@ -144,6 +163,11 @@ export default function UpdatesPage() {
   const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
   const layoutMenuRef = useRef<HTMLDivElement>(null);
   const sourceListRef = useRef<HTMLUListElement>(null);
+  const sourceSearchRef = useRef<HTMLInputElement>(null);
+  const [sourceQuery, setSourceQuery] = useState('');
+  // Riga selezionata con la tastiera (id elemento, o giorno|chiave per un gruppo)
+  const [cursorId, setCursorId] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   // Gruppi aperti, per giorno + chiave del gruppo
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -353,6 +377,26 @@ export default function UpdatesPage() {
   }, [sourceList]);
   const currentGroup = !current && activeSite ? groups.find((g) => g.site === activeSite) ?? null : null;
 
+  // Ricerca nella colonna Fonti: per nome, indirizzo o sito
+  const query = fold(sourceQuery.trim());
+  const visibleGroups = useMemo(() => {
+    if (!query) return groups;
+    return groups
+      .map((g) => ({
+        ...g,
+        sources: fold(g.site).includes(query)
+          ? g.sources
+          : g.sources.filter((s) => fold(s.name).includes(query) || fold(s.url).includes(query)),
+      }))
+      .filter((g) => g.sources.length > 0);
+  }, [groups, query]);
+
+  function toggleSite(site: string) {
+    const set = new Set(layout.collapsedSites);
+    if (set.has(site)) set.delete(site); else set.add(site);
+    updateLayout({ collapsedSites: [...set] });
+  }
+
   function selectSource(id: string | null) {
     setActiveSource(id);
     setActiveSite(null);
@@ -419,6 +463,106 @@ export default function UpdatesPage() {
     setShowWizard(true);
   }
 
+  /* ── Navigazione da tastiera ──────────────────────────────────────────────── */
+  // Righe nell'ordine in cui compaiono: un gruppo chiuso è una riga, se aperto seguono i suoi elementi
+  const navRows = useMemo(() => {
+    const rows: { id: string; group: ItemGroup; groupId: string; item?: WatchItem }[] = [];
+    for (const d of grouped) {
+      for (const g of d.groups) {
+        const groupId = `${d.day}|${g.key}`;
+        if (g.items.length === 1) { rows.push({ id: g.items[0].id, group: g, groupId, item: g.items[0] }); continue; }
+        rows.push({ id: groupId, group: g, groupId });
+        if (expanded.has(groupId)) for (const it of g.items) rows.push({ id: it.id, group: g, groupId, item: it });
+      }
+    }
+    return rows;
+  }, [grouped, expanded]);
+
+  /** Elemento da aprire per un gruppo: in una discussione il primo post non letto, altrimenti il più recente. */
+  function groupTarget(g: ItemGroup): WatchItem {
+    const unread = g.items.filter((i) => !i.isRead);
+    return g.thread && unread.length > 0 ? unread[unread.length - 1] : g.items[0];
+  }
+
+  // Il gestore viene riletto a ogni render: usa sempre lo stato aggiornato
+  const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
+  keyHandler.current = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const el = e.target as HTMLElement | null;
+    if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+    if (showWizard || editingSource || document.querySelector('[role="dialog"]')) return;
+
+    const idx = navRows.findIndex((r) => r.id === cursorId);
+    const row = idx >= 0 ? navRows[idx] : null;
+    const move = (to: number) => {
+      if (navRows.length === 0) return;
+      setCursorId(navRows[Math.max(0, Math.min(navRows.length - 1, to))].id);
+    };
+
+    switch (e.key) {
+      case 'j': e.preventDefault(); move(idx < 0 ? 0 : idx + 1); break;
+      case 'k': e.preventDefault(); move(idx < 0 ? 0 : idx - 1); break;
+      case 'o':
+      case 'Enter': {
+        if (!row) return;
+        // Invio su un pulsante o link mantiene il suo comportamento
+        if (e.key === 'Enter' && el && el !== document.body) return;
+        e.preventDefault();
+        const target = row.item ?? groupTarget(row.group);
+        window.open(target.url, '_blank', 'noopener,noreferrer');
+        if (row.item) setRead(row.item, true); else setReadMany(row.group.items, true);
+        break;
+      }
+      case 'm':
+        if (!row) return;
+        e.preventDefault();
+        if (row.item) setRead(row.item, !row.item.isRead);
+        else setReadMany(row.group.items, row.group.items.some((i) => !i.isRead));
+        break;
+      case 's':
+        if (!row?.item || row.item.savedBookmarkId) return;
+        e.preventDefault();
+        save(row.item);
+        break;
+      case 'h': {
+        if (!row) return;
+        e.preventDefault();
+        // La selezione passa alla riga successiva (o precedente se era l'ultima)
+        const gone = new Set(row.item ? [row.id] : [row.id, ...row.group.items.map((i) => i.id)]);
+        const next = navRows.slice(idx + 1).find((r) => !gone.has(r.id)) ?? navRows.slice(0, idx).reverse().find((r) => !gone.has(r.id));
+        setCursorId(next?.id ?? null);
+        if (row.item) hide(row.item); else hideMany(row.group.items);
+        break;
+      }
+      case 'x':
+        if (!row || row.group.items.length < 2) return;
+        e.preventDefault();
+        toggleGroup(row.groupId);
+        setCursorId(row.groupId);
+        break;
+      case 'u': e.preventDefault(); setOnlyUnread((v) => !v); setCursorId(null); break;
+      case '/':
+        e.preventDefault();
+        if (!layout.sidebarOpen) updateLayout({ sidebarOpen: true });
+        setTimeout(() => sourceSearchRef.current?.focus(), 0);
+        break;
+      case '?': e.preventDefault(); setShowShortcuts(true); break;
+      case 'Escape': setCursorId(null); break;
+    }
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyHandler.current(e);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // La riga selezionata resta visibile
+  useEffect(() => {
+    if (!cursorId) return;
+    document.querySelector(`[data-row="${CSS.escape(cursorId)}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [cursorId]);
+
   /* ── Righe della timeline ────────────────────────────────────────────────── */
   const rowPad = layout.compact ? '6px 6px 6px 14px' : '10px 6px 10px 14px';
   const titleClass = `${layout.wrapTitles ? 'block break-words' : 'block truncate'} ${layout.compact ? 'text-[13px]' : 'text-[14px]'} hover:underline`;
@@ -427,7 +571,8 @@ export default function UpdatesPage() {
     return (
       <li
         key={it.id}
-        className="bookmark-item"
+        data-row={it.id}
+        className={`bookmark-item ${cursorId === it.id ? 'kbd-cursor' : ''}`}
         style={{ padding: nested ? rowPad.replace(/14px$/, '38px') : rowPad, borderTop: '1px solid var(--border)', alignItems: 'flex-start' }}
       >
         <span
@@ -484,15 +629,14 @@ export default function UpdatesPage() {
     const id = `${day}|${g.key}`;
     const open = expanded.has(id);
     const unread = g.items.filter((i) => !i.isRead);
-    // In una discussione si riparte dal primo post non letto; altrimenti il più recente
-    const target = g.thread && unread.length > 0 ? unread[unread.length - 1] : g.items[0];
+    const target = groupTarget(g);
     const sourceNames = [...new Set(g.items.map((i) => i.source.name))];
     const count = g.thread
       ? `${g.items.length} nuovi post`
       : `${g.items.length} volte`;
     return (
       <li key={g.key} style={{ borderTop: '1px solid var(--border)' }}>
-        <div className="bookmark-item" style={{ padding: rowPad, alignItems: 'flex-start' }}>
+        <div data-row={id} className={`bookmark-item ${cursorId === id ? 'kbd-cursor' : ''}`} style={{ padding: rowPad, alignItems: 'flex-start' }}>
           <span
             className="mt-1.5 shrink-0 rounded-full"
             style={{ width: 7, height: 7, background: unread.length > 0 ? 'var(--accent)' : 'transparent' }}
@@ -559,6 +703,15 @@ export default function UpdatesPage() {
           <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
         </div>
         <div className="flex-1" />
+        <button
+          type="button"
+          className="icon-btn hidden md:inline-flex"
+          onClick={() => setShowShortcuts(true)}
+          aria-label="Scorciatoie da tastiera"
+          title="Scorciatoie da tastiera (?)"
+        >
+          <Keyboard size={16} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="icon-btn"
@@ -648,6 +801,36 @@ export default function UpdatesPage() {
               <PanelLeftClose size={14} aria-hidden="true" />
             </button>
           </div>
+          <div className="source-search">
+            <Search size={14} className="text-fg-faint shrink-0" aria-hidden="true" />
+            <label htmlFor="source-search" className="sr-only">Cerca tra le fonti</label>
+            <input
+              ref={sourceSearchRef}
+              id="source-search"
+              type="search"
+              name="source-search"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Cerca fonte…  ( / )"
+              value={sourceQuery}
+              onChange={(e) => setSourceQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') { setSourceQuery(''); e.currentTarget.blur(); }
+                // Invio apre la prima fonte trovata
+                if (e.key === 'Enter') {
+                  const first = visibleGroups[0];
+                  if (first) {
+                    if (first.sources.length === 1) selectSource(first.sources[0].id); else selectSite(first.site);
+                  }
+                }
+              }}
+            />
+            {sourceQuery && (
+              <button type="button" className="icon-btn icon-btn-sm" onClick={() => { setSourceQuery(''); sourceSearchRef.current?.focus(); }} aria-label="Cancella ricerca">
+                <X size={13} aria-hidden="true" />
+              </button>
+            )}
+          </div>
           <ul
             ref={sourceListRef}
             className={`py-1 overflow-y-auto ${layout.sidebarHeight == null ? `max-h-[40vh] ${layout.sidebarSticky ? 'md:max-h-[calc(100vh-200px)]' : 'md:max-h-none'}` : ''}`}
@@ -665,29 +848,44 @@ export default function UpdatesPage() {
                 {totalUnread > 0 && <span className="badge">{totalUnread}</span>}
               </button>
             </li>
-            {groups.map((g) => (
+            {visibleGroups.map((g) => {
+              const multi = (groups.find((x) => x.site === g.site)?.sources.length ?? 0) > 1;
+              const collapsed = multi && !query && layout.collapsedSites.includes(g.site);
+              return (
               <li key={g.site}>
-                {g.sources.length > 1 && (
-                  <button
-                    type="button"
-                    className="bookmark-item w-full text-left"
-                    style={{ border: 'none', font: 'inherit', cursor: 'pointer' }}
-                    aria-current={activeSite === g.site ? 'true' : undefined}
-                    title={`Tutte le ${g.sources.length} fonti di ${g.site}`}
-                    onClick={() => selectSite(g.site)}
-                  >
-                    <SiteIcon site={g.site} />
-                    <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
-                    <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
-                    {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
-                  </button>
+                {multi && (
+                  <div className="bookmark-item" style={{ paddingLeft: 4 }} aria-current={activeSite === g.site ? 'true' : undefined}>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn-sm shrink-0"
+                      onClick={() => toggleSite(g.site)}
+                      aria-expanded={!collapsed}
+                      aria-label={collapsed ? `Mostra le fonti di ${g.site}` : `Nascondi le fonti di ${g.site}`}
+                      title={collapsed ? 'Espandi' : 'Comprimi'}
+                    >
+                      {collapsed ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                      style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
+                      title={`Tutte le ${g.sources.length} fonti di ${g.site}`}
+                      onClick={() => selectSite(g.site)}
+                    >
+                      <SiteIcon site={g.site} />
+                      <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
+                      <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
+                      {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
+                    </button>
+                  </div>
                 )}
-                <ul style={{ listStyle: 'none' }} aria-label={g.sources.length > 1 ? `Fonti di ${g.site}` : undefined}>
+                {!collapsed && (
+                <ul style={{ listStyle: 'none' }} aria-label={multi ? `Fonti di ${g.site}` : undefined}>
                   {g.sources.map((s) => (
                     <li key={s.id}>
                       <div
                         className="bookmark-item"
-                        style={{ opacity: s.isActive ? 1 : 0.55, paddingLeft: g.sources.length > 1 ? 30 : undefined }}
+                        style={{ opacity: s.isActive ? 1 : 0.55, paddingLeft: multi ? 30 : undefined }}
                         aria-current={activeSource === s.id ? 'true' : undefined}
                       >
                         <button
@@ -701,7 +899,7 @@ export default function UpdatesPage() {
                             ? <AlertTriangle size={14} style={{ color: 'var(--danger)', flexShrink: 0 }} aria-label="Errore" />
                             : !s.isActive
                               ? <Pause size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-label="Sospesa" />
-                              : g.sources.length === 1
+                              : !multi
                                 ? <SiteIcon site={g.site} />
                                 : s.mode === 'FEED'
                                   ? <Rss size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
@@ -735,8 +933,13 @@ export default function UpdatesPage() {
                     </li>
                   ))}
                 </ul>
+                )}
               </li>
-            ))}
+              );
+            })}
+            {query && visibleGroups.length === 0 && (
+              <li className="px-3.5 py-2.5 text-xs text-fg-muted">Nessuna fonte corrisponde a “{sourceQuery.trim()}”.</li>
+            )}
             {sources?.length === 0 && (
               <li className="px-3.5 py-2.5 text-xs text-fg-muted">Nessuna fonte. Aggiungine una con “Fonte”.</li>
             )}
@@ -891,6 +1094,25 @@ export default function UpdatesPage() {
           onClose={() => setShowWizard(false)}
           onCreated={() => { loadSources(); ui.toast('Fonte aggiunta: il primo controllo avverrà entro un minuto'); }}
         />
+      )}
+      {showShortcuts && (
+        <Modal title="Scorciatoie da tastiera" onClose={() => setShowShortcuts(false)} width={420}>
+          <dl className="grid gap-y-2 gap-x-4 text-sm" style={{ gridTemplateColumns: 'auto 1fr' }}>
+            {SHORTCUTS.map(({ keys, label }) => (
+              <div key={label} className="contents">
+                <dt className="text-right whitespace-nowrap">
+                  {keys.map((k, i) => (
+                    <span key={k}>
+                      {i > 0 && <span className="text-fg-faint text-xs mx-1">/</span>}
+                      <kbd className="kbd">{k}</kbd>
+                    </span>
+                  ))}
+                </dt>
+                <dd className="text-fg-muted">{label}</dd>
+              </div>
+            ))}
+          </dl>
+        </Modal>
       )}
       {editingSource && (
         <AddSourceWizard
