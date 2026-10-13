@@ -5,7 +5,7 @@ import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIco
 import Modal from '@/components/ui/Modal';
 import CredentialForm from './CredentialForm';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
-import { detectExtension, fetchViaExtension, grantExtension, originOf, type ExtensionState } from '@/lib/extension';
+import { detectExtension, EXTENSION_VERSION, fetchViaExtension, grantExtension, originOf, type ExtensionState } from '@/lib/extension';
 import type { Bookmark, ExtractedItem, FetchedPage, FoundFeed, SuggestedArea, WatchDelivery, WatchFetcher, WatchPreview, WatchSource } from '@/types/api';
 import { DELIVERY_OPTIONS } from './NotificationsModal';
 
@@ -68,6 +68,15 @@ const INTERVALS = [
 // I forum cambiano più in fretta dei siti: frequenza proposta più alta
 const DEFAULT_SITE_INTERVAL = 60;
 const DEFAULT_FORUM_INTERVAL = 30;
+
+/** L'estensione installata è più vecchia di quella che distribuisce Linko? */
+function outdated(ext: ExtensionState | null | undefined) {
+  if (!ext) return false;
+  const a = EXTENSION_VERSION.split('.').map(Number);
+  const b = ext.version.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  return false;
+}
 
 function hostname(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
@@ -147,6 +156,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [blocked, setBlocked] = useState(false);
   const [ext, setExt] = useState<ExtensionState | null | undefined>(undefined);
   const [grantOrigin, setGrantOrigin] = useState<string | null>(null);
+  const [viaExt, setViaExt] = useState(false);
   const categories = [...new Set(sources.map((s) => s.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'it'));
   const [forum, setForum] = useState<string | null>(editing?.kind === 'FORUM' ? 'forum' : null);
   const [auth, setAuth] = useState<WatchPreview['auth']>();
@@ -222,7 +232,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     // Estensione già collegata: si passa subito al browser dell'utente
     const found = await detectExtension();
     setExt(found);
-    if (found?.connected) return analyzeWithExtension(target);
+    if (found?.connected && !outdated(found)) return analyzeWithExtension(target);
     setError(`${hostname(target)} blocca i server con una verifica anti-bot.`);
   }
 
@@ -231,6 +241,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     setError('');
     setGrantOrigin(null);
     setBusy(true);
+    setViaExt(true);
     try {
       const r = await fetchViaExtension(target.trim());
       if ('page' in r) {
@@ -245,7 +256,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         setGrantOrigin(r.origin);
         setError(`L'estensione ha bisogno del permesso per aprire ${hostname(target)}.`);
       } else if (r.error === 'challenge') {
-        setError('Il sito chiede la verifica anti-bot anche nel tuo browser: aprilo in una scheda, spunta la casella, poi riprova.');
+        setError('La verifica anti-bot non è stata superata in tempo: riprova e, quando si apre la finestra del sito, spunta la casella.');
       } else if (r.error === 'reload') {
         setError('L\'estensione è stata aggiornata: ricarica questa pagina e riprova.');
       } else {
@@ -255,6 +266,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       setError(`${(err as Error).message}.`);
     } finally {
       setBusy(false);
+      setViaExt(false);
     }
   }
 
@@ -439,7 +451,9 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         <div className="flex flex-col items-center gap-3 py-10 text-fg-muted" aria-live="polite">
           <div className="spinner" aria-hidden="true" />
           <p>Analizzo <strong className="text-fg-strong">{bookmarkTitle || hostname(url)}</strong>…</p>
-          <p className="text-xs text-fg-faint">Cerco feed RSS e liste di elementi nella pagina.</p>
+          {viaExt
+            ? <p className="text-xs text-fg-faint text-center max-w-sm">La pagina la apre il tuo browser. Se compare una finestra con la verifica anti-bot, spunta la casella: la finestra si chiude da sola.</p>
+            : <p className="text-xs text-fg-faint">Cerco feed RSS e liste di elementi nella pagina.</p>}
         </div>
       )}
 
@@ -787,6 +801,12 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
             <div className="flex flex-wrap items-center gap-2">
               <a href="/extension" target="_blank" rel="noopener" className="btn btn-primary btn-sm">Collega l&apos;estensione</a>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExt(undefined)}>Fatto, ricontrolla</button>
+            </div>
+          )}
+          {ext?.connected && outdated(ext) && (
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <a href="/extension" target="_blank" rel="noopener" className="btn btn-primary btn-sm">Aggiorna l&apos;estensione</a>
+              <span className="text-xs text-fg-faint">È disponibile la versione {EXTENSION_VERSION}: scaricala, sostituisci la cartella e premi ↻ in brave://extensions.</span>
             </div>
           )}
           {ext?.connected && !grantOrigin && (

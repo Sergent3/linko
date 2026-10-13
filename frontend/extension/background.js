@@ -14,6 +14,9 @@ importScripts('config.js');
 const VERSION = chrome.runtime.getManifest().version;
 const API = `${self.LINKO_ORIGIN}/api/v1/extension/agent`;
 const CHALLENGE_WAIT_MS = 45_000;
+// Analisi dal wizard: dopo qualche secondo la finestra si mostra, l'utente può spuntare la casella
+const SHOW_AFTER_MS = 12_000;
+const INTERACTIVE_WAIT_MS = 150_000;
 const POLL_MINUTES = 1;
 
 const DEFAULT_STATE = {
@@ -81,14 +84,24 @@ function titleOf(html) {
   return html.match(/<title[^>]*>([^<]*)/i)?.[1] ?? '';
 }
 
-/** Pagina aperta in una finestra ridotta a icona, per superare la verifica anti-bot. */
-async function viaWindow(url) {
+/**
+ * Pagina aperta in una finestra ridotta a icona, per superare la verifica anti-bot.
+ * Con interactive (l'utente sta aggiungendo la fonte) la finestra, se la verifica
+ * non passa da sola, viene mostrata: l'utente spunta la casella e la pagina arriva.
+ */
+async function viaWindow(url, interactive = false) {
   const win = await chrome.windows.create({ url, state: 'minimized', focused: false });
   const tabId = win.tabs?.[0]?.id;
+  const start = Date.now();
+  let shown = false;
   try {
-    const deadline = Date.now() + CHALLENGE_WAIT_MS;
+    const deadline = start + (interactive ? INTERACTIVE_WAIT_MS : CHALLENGE_WAIT_MS);
     while (Date.now() < deadline) {
       await sleep(1500);
+      if (interactive && !shown && Date.now() - start > SHOW_AFTER_MS) {
+        shown = true;
+        await chrome.windows.update(win.id, { state: 'normal', focused: true, width: 900, height: 760 }).catch(() => {});
+      }
       const tab = await chrome.tabs.get(tabId).catch(() => null);
       if (!tab) return { error: 'network', message: 'Finestra chiusa prima della fine' };
       if (tab.status !== 'complete') continue;
@@ -111,7 +124,7 @@ async function viaWindow(url) {
   }
 }
 
-async function fetchSite(url) {
+async function fetchSite(url, interactive = false) {
   const origin = originOf(url);
   if (!origin || !(await hasPermission(origin))) return { error: 'permission', origin };
   try {
@@ -123,7 +136,7 @@ async function fetchSite(url) {
     // Errore di rete o CORS: si riprova aprendo la pagina
   }
   try {
-    return await viaWindow(url);
+    return await viaWindow(url, interactive);
   } catch (err) {
     return { error: 'network', message: String(err?.message ?? err) };
   }
@@ -240,7 +253,7 @@ async function handle(msg, sender) {
     case 'fetch': {
       // Analisi di una pagina dal wizard di Linko
       if (typeof msg.url !== 'string') return { error: 'forbidden' };
-      return fetchSite(msg.url);
+      return fetchSite(msg.url, true);
     }
     case 'grant': {
       // Linko chiede il permesso per nuovi siti: si apre il pannello, dove l'utente lo concede

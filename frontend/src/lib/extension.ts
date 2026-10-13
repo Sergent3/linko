@@ -46,7 +46,7 @@ function call<T>(payload: Record<string, unknown>, timeoutMs: number): Promise<T
 
 /** Stato dell'estensione, o null se non è installata (o non è per questo indirizzo di Linko). */
 export async function detectExtension(): Promise<ExtensionState | null> {
-  const r = await call<ExtensionState & { error?: string }>({ type: 'hello' }, 1200);
+  const r = await call<ExtensionState & { error?: string }>({ type: 'hello' }, 3000);
   return r && !r.error ? r : null;
 }
 
@@ -56,9 +56,9 @@ export const pollExtension = () => call<ExtensionState>({ type: 'poll' }, 120_00
 /** Apre il pannello dell'estensione per concedere il permesso a questi siti. */
 export const grantExtension = (origins: string[]) => call<{ ok: boolean }>({ type: 'grant', origins }, 5000);
 
-/** Scarica una pagina dal browser dell'utente (verifica anti-bot inclusa: può volerci fino a un minuto). */
+/** Scarica una pagina dal browser dell'utente (verifica anti-bot inclusa: se serve, l'utente spunta la casella). */
 export async function fetchViaExtension(url: string): Promise<ExtensionFetchResult> {
-  return (await call<ExtensionFetchResult>({ type: 'fetch', url }, 90_000)) ?? { error: 'extension', message: 'L\'estensione non ha risposto' };
+  return (await call<ExtensionFetchResult>({ type: 'fetch', url }, 180_000)) ?? { error: 'extension', message: 'L\'estensione non ha risposto' };
 }
 
 /** Origine (protocollo + host) di un indirizzo, come la usa l'estensione per i permessi. */
