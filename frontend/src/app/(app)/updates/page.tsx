@@ -928,8 +928,12 @@ export default function UpdatesPage() {
                       data-source-btn={s.id}
                       className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
                       style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
-                      title={`${s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}${reorderable ? ' · trascina o Alt+↑/↓ per spostare' : ''}`}
-                      onClick={() => selectSource(s.id)}
+                      title={`Apri ${siteOf(s.url)} · ${s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}${reorderable ? ' · trascina o Alt+↑/↓ per spostare' : ''}`}
+                      onClick={() => {
+                        selectSource(s.id);
+                        // Apre anche la pagina seguita in una nuova scheda
+                        window.open(s.url, '_blank', 'noopener,noreferrer');
+                      }}
                       onKeyDown={(e) => moveByKeyboard(e, s)}
                     >
                       {s.status === 'ERROR'
