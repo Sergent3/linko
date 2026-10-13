@@ -406,6 +406,38 @@ export default function UpdatesPage() {
     }
   }
 
+  /** Segna come letti tutti gli aggiornamenti di una fonte, dalla colonna Fonti (con Annulla). */
+  async function readSource(src: WatchSource) {
+    try {
+      // Gli id non letti servono per poter annullare
+      const ids: string[] = [];
+      for (let p = 1; p <= 20; p++) {
+        const res = await watchApi.items({ sourceId: src.id, unread: true, limit: 200, page: p });
+        ids.push(...res.data.map((i) => i.id));
+        if (p >= res.meta.totalPages) break;
+      }
+      await watchApi.readAll({ sourceId: src.id });
+      setSources((prev) => prev && prev.map((x) => (x.id === src.id ? { ...x, unreadCount: 0 } : x)));
+      setItems((prev) => prev.map((i) => (i.sourceId === src.id ? { ...i, isRead: true } : i)));
+      if (onlyUnread) loadItems(1);
+      ui.toast(`${src.name}: ${ids.length === 1 ? '1 aggiornamento segnato come letto' : `${ids.length} aggiornamenti segnati come letti`}`, {
+        action: {
+          label: 'Annulla',
+          onClick: async () => {
+            for (let i = 0; i < ids.length; i += 20) {
+              await Promise.all(ids.slice(i, i + 20).map((id) => watchApi.updateItem(id, { isRead: false }))).catch(() => {});
+            }
+            loadItems(1);
+            loadSources();
+          },
+        },
+      });
+    } catch {
+      ui.toast('Operazione non riuscita. Riprova.', { kind: 'error' });
+      loadSources();
+    }
+  }
+
   /* ── Azioni fonte ────────────────────────────────────────────────────────── */
   const current = sourceList.find((s) => s.id === activeSource) ?? null;
 
@@ -917,6 +949,17 @@ export default function UpdatesPage() {
                       {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
                     </button>
                     <span className="row-actions">
+                      {s.unreadCount > 0 && (
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn-sm"
+                          onClick={() => readSource(s)}
+                          aria-label={`Segna come letti tutti gli aggiornamenti di ${s.name}`}
+                          title={`Segna tutti letti (${s.unreadCount})`}
+                        >
+                          <CheckCheck size={13} aria-hidden="true" />
+                        </button>
+                      )}
                       <button type="button" className="icon-btn icon-btn-sm" onClick={() => setEditingSource(s)} aria-label={`Modifica ${s.name}`} title="Modifica">
                         <Pencil size={13} aria-hidden="true" />
                       </button>
