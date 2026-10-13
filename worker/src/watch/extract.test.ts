@@ -135,3 +135,24 @@ describe('stableKeyUrl / isActionLink', () => {
     expect(isActionLink('https://simpcity.cr/threads/x.1/post-2')).toBe(false);
   });
 });
+
+describe('griglie di video (titolo nell\'attributo title)', () => {
+  const post = (id: string, title: string) => `
+    <div class='post_el_small'>
+      <div class='post_text'>${title} <a class="hash_link" href="/BigTits.html">#BigTits</a> <a class="hash_link" href="/Blowjob.html">#Blowjob</a></div>
+      <a href='/post/${id}.html' aria-label=' video'><img alt='POST THUMB' src='/t.jpg'></a>
+      <div class='post_control'><a class='tdn post_time' href='/post/${id}.html' title='${title} #BigTits #Blowjob #Brunette'>
+        <div class='post_control_time'><span>19 hours ago</span> · 40504 views</div></a></div>
+    </div>`;
+  const html = `<html><body><div id="content_div"><div class="main_content">
+    <div class='block_header'><div class='splitter_block_header'><span>Porn Wall</span></div>
+      ${post('a1', 'Prima scena del giorno')}${post('a2', 'Seconda scena in HD')}${post('a3', 'Terza scena completa')}${post('a4', 'Quarta scena nuova')}
+    </div></div></div></body></html>`;
+
+  it('block_header non è navigazione e il titolo viene dall\'attributo title, senza hashtag', () => {
+    const [area] = suggestAreas(html, 'https://example.com/');
+    expect(area.isNavigation).toBe(false);
+    expect(area.label).toBe('Porn Wall');
+    expect(area.sample[0]).toEqual({ title: 'Prima scena del giorno', url: 'https://example.com/post/a1.html' });
+  });
+});

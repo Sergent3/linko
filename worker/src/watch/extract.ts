@@ -30,7 +30,10 @@ const MIN_REPEATED = 3;
 // come "Ultimi post" o "Più letti".
 const NAV_TAGS = new Set(['nav', 'header', 'footer']);
 // Parola chiave come token di classe/id, anche dentro nomi composti (p-navSticky, main-menu, sectionLinks)
-const NAV_HINT = /(?:^|[\s_-])(?:nav(?:bar|igation)?|menu|breadcrumbs?|footer|header|pagination|pager|social|share|cookie|sectionLinks)(?=$|[\s_A-Z-])/;
+const NAV_HINT = /(?:^|[\s_-])(?:nav(?:bar|igation)?|menu|breadcrumbs?|pagination|pager|social|share|cookie|sectionLinks)(?=$|[\s_A-Z-])/;
+// header/footer solo per la testata e il piede del sito (header, site-header, p-footer…):
+// block_header, card-header, post-header sono intestazioni di contenuti
+const PAGE_HEADER_HINT = /(?:^|\s)(?:(?:site|page|main|global|top|bottom|app|p)[_-]?)?(?:header|footer)(?=$|\s|[_-](?:inner|wrap|wrapper|container|nav|menu|links)\b)/i;
 
 // Link di servizio di forum e CMS (segna come letto, login, stile…): non sono contenuti
 const ACTION_PATH = /\/(?:[^/]*\/)?(?:-\/)?(?:mark-read|mark-forums-read|markread|login|logout|log-out|register|lost-password|misc\/style|misc\/language|misc\/contact|account\/[^?#]*)(?:[/?#]|$)/i;
@@ -80,6 +83,11 @@ function cleanText(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+/** Toglie le liste di hashtag (#tag #tag #tag…) che alcuni siti accodano al titolo. */
+function stripHashtags(s: string): string {
+  return cleanText(s.replace(/(?:\s*#[\p{L}\p{N}_-]+){3,}/gu, ' '));
+}
+
 /** Primo link "significativo" dentro un blocco: quello col testo più lungo. */
 function bestLink($: cheerio.CheerioAPI, block: AnyNode, baseUrl: string): ExtractedItem | null {
   let best: ExtractedItem | null = null;
@@ -90,7 +98,11 @@ function bestLink($: cheerio.CheerioAPI, block: AnyNode, baseUrl: string): Extra
       const $a = $(a);
       const url = absUrl($a.attr('href'), baseUrl);
       if (!url || isActionLink(url)) return;
-      const title = cleanText($a.attr('title') && $a.text().trim().length < MIN_TITLE_LEN ? $a.attr('title')! : $a.text());
+      const text = cleanText($a.text());
+      // Testo assente, troncato o da metadato ("19 hours ago · 40504 views"): se l'attributo
+      // title è più lungo, il titolo vero è lì
+      const attr = cleanText($a.attr('title') ?? '');
+      const title = attr.length > text.length && stripHashtags(attr).length >= MIN_TITLE_LEN ? stripHashtags(attr) : text;
       if (title.length < MIN_TITLE_LEN) return;
       if (!best || title.length > best.title.length) best = { title: title.slice(0, 300), url };
     });
@@ -220,7 +232,7 @@ function isNavigation($: cheerio.CheerioAPI, el: Element): boolean {
   while (cur && cur.type === 'tag') {
     if (NAV_TAGS.has(cur.tagName)) return true;
     const hint = `${cur.attribs?.id ?? ''} ${cur.attribs?.class ?? ''} ${cur.attribs?.role ?? ''}`;
-    if (NAV_HINT.test(hint) || cur.attribs?.role === 'navigation') return true;
+    if (NAV_HINT.test(hint) || PAGE_HEADER_HINT.test(hint) || cur.attribs?.role === 'navigation') return true;
     cur = cur.parent && cur.parent.type === 'tag' ? (cur.parent as Element) : null;
   }
   return false;
@@ -235,6 +247,12 @@ function areaLabel($: cheerio.CheerioAPI, el: Element): string {
     const heading = $(cur).prevAll('h1,h2,h3,h4,h5,h6').first().text() || $(cur).children('h1,h2,h3,h4').first().text();
     if (cleanText(heading)) return cleanText(heading).slice(0, 80);
     cur = cur.parent && cur.parent.type === 'tag' ? (cur.parent as Element) : null;
+  }
+  // Intestazione fatta con un div ("Porn Wall", "Latest"): primo figlio con classe da titolo
+  const first = childElements(el)[0];
+  if (first && /title|header|heading|caption|splitter/i.test(first.attribs?.class ?? '')) {
+    const text = cleanText($(first).text());
+    if (text.length >= MIN_TITLE_LEN && text.length <= 80) return text;
   }
   return el.attribs?.id ?? signature(el);
 }
