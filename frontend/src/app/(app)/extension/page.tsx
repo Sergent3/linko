@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, Copy, Download, Puzzle, RefreshCw, ShieldAlert, Unplug } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Copy, Download, Puzzle, RefreshCw, ShieldAlert, Smartphone, Unplug } from 'lucide-react';
 import { useUI } from '@/components/ui/UIProvider';
 import { extensionApi } from '@/lib/api';
 import {
@@ -51,6 +51,7 @@ export default function ExtensionPage() {
   const [server, setServer] = useState<ExtensionStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [origin, setOrigin] = useState('');
+  const [mobile, setMobile] = useState(false);
 
   const load = useCallback(async () => {
     const [state, status] = await Promise.all([detectExtension(), extensionApi.status().catch(() => null)]);
@@ -60,6 +61,7 @@ export default function ExtensionPage() {
 
   useEffect(() => {
     setOrigin(window.location.origin);
+    setMobile(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent));
     load();
     // Appena installata o ricaricata, l'estensione si annuncia: si aggiorna la pagina da sola
     const onReady = (e: MessageEvent) => {
@@ -142,6 +144,14 @@ export default function ExtensionPage() {
           le novità arrivano in <Link href="/updates" className="text-accent-text hover:underline">Aggiornamenti</Link> come per le altre fonti.
           Funziona finché il computer è acceso e il browser aperto.
         </p>
+
+        {mobile && (
+          <p className="text-xs px-3 py-2 rounded-md flex gap-2" style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)' }}>
+            <Smartphone size={14} className="shrink-0 mt-0.5" aria-hidden="true" />
+            Su telefono e tablet Chrome e Brave non installano estensioni: va installata nel browser del computer.
+            Le fonti che controlla restano comunque visibili qui, in Aggiornamenti.
+          </p>
+        )}
 
         {origin.startsWith('http:') && (
           <p className="text-xs px-3 py-2 rounded-md flex gap-2" style={{ background: 'var(--surface-hover)', color: 'var(--text-muted)' }}>
