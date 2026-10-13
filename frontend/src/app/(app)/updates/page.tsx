@@ -928,12 +928,8 @@ export default function UpdatesPage() {
                       data-source-btn={s.id}
                       className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
                       style={{ border: 'none', background: 'none', font: 'inherit', color: 'inherit', cursor: 'pointer', padding: 0 }}
-                      title={`Apri ${siteOf(s.url)} · ${s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}${reorderable ? ' · trascina o Alt+↑/↓ per spostare' : ''}`}
-                      onClick={() => {
-                        selectSource(s.id);
-                        // Apre anche la pagina seguita in una nuova scheda
-                        window.open(s.url, '_blank', 'noopener,noreferrer');
-                      }}
+                      title={`${s.status === 'ERROR' ? `Errore: ${s.lastError}` : `Ultimo controllo ${relative(s.lastCheckedAt)}`}${reorderable ? ' · trascina o Alt+↑/↓ per spostare' : ''}`}
+                      onClick={() => selectSource(s.id)}
                       onKeyDown={(e) => moveByKeyboard(e, s)}
                     >
                       {s.status === 'ERROR'
@@ -965,6 +961,17 @@ export default function UpdatesPage() {
                         <CheckCheck size={14} aria-hidden="true" />
                       </button>
                     )}
+                    {/* Sempre visibile: apre la pagina seguita in una nuova scheda */}
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="icon-btn icon-btn-sm shrink-0"
+                      aria-label={`Apri ${s.name} nel browser`}
+                      title={`Apri ${siteOf(s.url)}`}
+                    >
+                      <ExternalLink size={13} aria-hidden="true" />
+                    </a>
                     <span className="row-actions">
                       <button type="button" className="icon-btn icon-btn-sm" onClick={() => setEditingSource(s)} aria-label={`Modifica ${s.name}`} title="Modifica">
                         <Pencil size={13} aria-hidden="true" />
@@ -1472,7 +1479,8 @@ export default function UpdatesPage() {
           )}
           {current && (
             <div className="card flex items-center gap-3 flex-wrap px-4 py-3 mb-4">
-              <div className="min-w-0 flex-1">
+              {/* Su schermi stretti i comandi vanno sotto invece di schiacciare il nome */}
+              <div className="min-w-0 flex-1" style={{ flexBasis: 220 }}>
                 <h2 className="font-semibold text-fg-strong truncate">{current.name}</h2>
                 <p className="text-xs text-fg-muted">
                   {modeLabel(current.mode)} · ultimo controllo {relative(current.lastCheckedAt)} · ogni {every(current.currentIntervalMinutes)}
