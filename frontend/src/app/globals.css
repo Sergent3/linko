@@ -615,6 +615,8 @@ h1, h2, h3 { text-wrap: balance; }
   .item-preview-content table { display: block; overflow-x: auto; border-collapse: collapse; }
   .item-preview-content td, .item-preview-content th { border: 1px solid var(--border); padding: 4px 8px; }
   .is-previewed { background: var(--accent-soft) !important; }
+  .read-source-btn { color: var(--accent-text); }
+  .read-source-btn:hover { background: var(--accent-soft); color: var(--text-strong); }
 
   .kbd {
     display: inline-block;

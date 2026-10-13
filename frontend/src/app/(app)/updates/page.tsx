@@ -948,18 +948,19 @@ export default function UpdatesPage() {
                       {s.delivery === 'DIGEST' && <Newspaper size={12} className="shrink-0 text-fg-faint" aria-label="Riepilogo giornaliero" />}
                       {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}
                     </button>
+                    {/* Sempre visibile (non solo al passaggio del mouse) quando ci sono non letti */}
+                    {s.unreadCount > 0 && (
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn-sm shrink-0 read-source-btn"
+                        onClick={() => readSource(s)}
+                        aria-label={`Segna come letti tutti gli aggiornamenti di ${s.name}`}
+                        title={`Segna tutti letti (${s.unreadCount})`}
+                      >
+                        <CheckCheck size={14} aria-hidden="true" />
+                      </button>
+                    )}
                     <span className="row-actions">
-                      {s.unreadCount > 0 && (
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn-sm"
-                          onClick={() => readSource(s)}
-                          aria-label={`Segna come letti tutti gli aggiornamenti di ${s.name}`}
-                          title={`Segna tutti letti (${s.unreadCount})`}
-                        >
-                          <CheckCheck size={13} aria-hidden="true" />
-                        </button>
-                      )}
                       <button type="button" className="icon-btn icon-btn-sm" onClick={() => setEditingSource(s)} aria-label={`Modifica ${s.name}`} title="Modifica">
                         <Pencil size={13} aria-hidden="true" />
                       </button>
