@@ -1317,7 +1317,7 @@ export default function UpdatesPage() {
           <ul
             ref={sourceListRef}
             className={`py-1 overflow-y-auto ${layout.sidebarHeight == null ? `max-h-[40vh] ${layout.sidebarSticky ? 'md:max-h-[calc(100vh-200px)]' : 'md:max-h-none'}` : ''}`}
-            style={{ listStyle: 'none', overscrollBehavior: 'contain', height: layout.sidebarHeight ?? undefined }}
+            style={{ listStyle: 'none', height: layout.sidebarHeight ?? undefined }}
           >
             <li>
               <button
