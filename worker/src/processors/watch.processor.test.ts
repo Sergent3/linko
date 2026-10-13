@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/prisma', () => ({ prisma: {} }));
 vi.mock('../config', () => ({ config: { SCRAPING_TIMEOUT_MS: 1000, WATCH_BLOCKED_IPS: [] } }));
 
-import { nextInterval } from './watch.processor';
+import { nextInterval, providedPage } from './watch.processor';
 
 describe('nextInterval', () => {
   it('primo controllo o nessun elemento: invariato', () => {
@@ -25,5 +25,15 @@ describe('nextInterval', () => {
   it('alcuni nuovi: accorcia di un quarto, non sotto 10 minuti', () => {
     expect(nextInterval(360, 120, 20, 3, false)).toBe(90);
     expect(nextInterval(60, 12, 20, 3, false)).toBe(10);
+  });
+});
+
+describe('providedPage', () => {
+  const page = { url: 'https://esempio.it/', status: 200, html: '<ul></ul>' };
+
+  it('restituisce la pagina dell\'estensione una sola volta', async () => {
+    const fetch = providedPage(page);
+    await expect(fetch('https://esempio.it/')).resolves.toBe(page);
+    await expect(fetch('https://esempio.it/feed')).rejects.toThrow(/estensione/);
   });
 });

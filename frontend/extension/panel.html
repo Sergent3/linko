@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linko</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --surface:#141b2e; --border:#26304a; --text:#e6e9f2; --muted:#9aa3b8; --accent:#6d8cff; --danger:#ef4444; --ok:#34d399; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; min-width:340px; }
+    main { padding:16px; max-width:520px; margin:0 auto; }
+    h1 { font-size:16px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
+    h1 img { width:20px; height:20px; }
+    h2 { font-size:13px; margin:16px 0 6px; }
+    p { margin:4px 0; color:var(--muted); font-size:13px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:12px; margin-top:10px; }
+    .warn { border-color: rgba(239,68,68,.5); }
+    .row { display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:6px; }
+    .dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; }
+    button, a.btn { font:inherit; font-size:13px; border-radius:8px; padding:6px 12px; border:1px solid var(--border); background:#1c2540; color:var(--text); cursor:pointer; text-decoration:none; display:inline-block; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button:disabled { opacity:.6; cursor:default; }
+    ul { margin:6px 0 0; padding-left:18px; font-size:13px; }
+    code { font-size:12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1><img src="icons/icon-32.png" alt=""> Linko</h1>
+    <div id="status" class="card" aria-live="polite">Caricamento…</div>
+    <div id="perm" class="card warn" hidden>
+      <h2 style="margin-top:0">Permesso per aprire questi siti</h2>
+      <p>Linko ha bisogno di aprire queste pagine dal tuo browser. L'estensione apre solo gli indirizzi delle fonti che hai scelto.</p>
+      <ul id="perm-list"></ul>
+      <div class="row" style="justify-content:flex-start;margin-top:10px"><button id="grant" class="primary">Consenti</button></div>
+    </div>
+    <div id="chal" class="card warn" hidden>
+      <h2 style="margin-top:0">Verifica anti-bot da superare</h2>
+      <p>Apri il sito, supera la verifica una volta (casella “Verifica di essere umano”), poi premi “Controlla ora”.</p>
+      <div id="chal-list"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="now">Controlla ora</button>
+      <a id="open" class="btn" target="_blank" rel="noopener">Apri Linko</a>
+    </div>
+  </main>
+  <script src="config.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

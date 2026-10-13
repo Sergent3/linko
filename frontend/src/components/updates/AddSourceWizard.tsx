@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon, KeyRound, MessagesSquare, Crosshair } from 'lucide-react';
+import { Search, Check, ChevronLeft, Rss, LayoutList, Link2, Folder as FolderIcon, KeyRound, MessagesSquare, Crosshair, Puzzle } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 import CredentialForm from './CredentialForm';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
-import type { Bookmark, ExtractedItem, FoundFeed, SuggestedArea, WatchDelivery, WatchPreview, WatchSource } from '@/types/api';
+import { detectExtension, fetchViaExtension, grantExtension, originOf, type ExtensionState } from '@/lib/extension';
+import type { Bookmark, ExtractedItem, FetchedPage, FoundFeed, SuggestedArea, WatchDelivery, WatchFetcher, WatchPreview, WatchSource } from '@/types/api';
 import { DELIVERY_OPTIONS } from './NotificationsModal';
 
 interface Props {
@@ -140,6 +141,12 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
   const [intervalMinutes, setIntervalMinutes] = useState(editing?.intervalMinutes ?? DEFAULT_SITE_INTERVAL);
   const [category, setCategory] = useState(editing?.category ?? '');
   const [delivery, setDelivery] = useState<WatchDelivery>(editing?.delivery ?? 'NORMAL');
+  // Siti con verifica anti-bot: la pagina la scarica l'estensione nel browser dell'utente
+  const [fetcher, setFetcher] = useState<WatchFetcher>(editing?.fetcher ?? 'SERVER');
+  const [extPage, setExtPage] = useState<FetchedPage | null>(null);
+  const [blocked, setBlocked] = useState(false);
+  const [ext, setExt] = useState<ExtensionState | null | undefined>(undefined);
+  const [grantOrigin, setGrantOrigin] = useState<string | null>(null);
   const categories = [...new Set(sources.map((s) => s.category).filter((c): c is string => !!c))].sort((a, b) => a.localeCompare(b, 'it'));
   const [forum, setForum] = useState<string | null>(editing?.kind === 'FORUM' ? 'forum' : null);
   const [auth, setAuth] = useState<WatchPreview['auth']>();
@@ -184,54 +191,98 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     analyze(b.url);
   }
 
+  // L'estensione serve solo se il server viene bloccato: la si cerca in quel momento
+  useEffect(() => {
+    if ((blocked || fetcher === 'EXTENSION') && ext === undefined) detectExtension().then(setExt);
+  }, [blocked, fetcher, ext]);
+
   async function analyze(target = url) {
     if (!target.trim()) return;
+    if (fetcher === 'EXTENSION') return analyzeWithExtension(target);
     setError('');
+    setBlocked(false);
     setBusy(true);
     try {
-      const res = await watchApi.preview(target.trim());
-      setShowLogin(false);
-      setForum(res.forum ?? null);
-      setAuth(res.auth);
-      if (!editing) setIntervalMinutes(res.forum ? DEFAULT_FORUM_INTERVAL : DEFAULT_SITE_INTERVAL);
-      setFinalUrl(res.finalUrl);
-      setAreas(res.areas);
-      setFeeds(res.feeds);
-      setThread(res.thread);
-      setFollowThread(!!res.thread && (!editing || editing.mode === 'THREAD'));
-      if (editing) setRetarget(true);
-      // In modifica si ripropone la scelta attuale, se è ancora valida sulla stessa pagina
-      if (editing && sameUrl(res.finalUrl, editing.url) && editing.mode !== 'THREAD') {
-        if (editing.mode === 'FEED' && editing.feedUrl) {
-          const fu = editing.feedUrl;
-          if (!res.feeds.some((f) => f.url === fu)) setFeeds([{ url: fu, title: 'Feed attuale', itemCount: 0, sample: [] }, ...res.feeds]);
-          setFeedUrl(fu);
-          setSelector('');
-        } else if (editing.selector) {
-          setSelector(editing.selector);
-          setFeedUrl('');
-          if (!res.areas.some((a) => a.selector === editing.selector)) setManualSelector(editing.selector);
-        }
-      } else if (res.thread && (!editing || editing.mode === 'THREAD')) {
-        setFeedUrl('');
-        setSelector('');
-      } else if (res.feeds.length > 0) {
-        setFeedUrl(res.feeds[0].url);
-        setSelector('');
-      } else {
-        const first = res.areas.find((a) => !a.isNavigation) ?? res.areas[0];
-        setFeedUrl('');
-        setSelector(first?.selector ?? '');
-      }
-      setStep('area');
+      applyPreview(await watchApi.preview(target.trim()));
     } catch (err) {
       const msg = (err as Error).message;
       setError(`${msg}.`);
-      // Blocco anti-bot, login richiesto o cookie scaduto: si propone di incollare il cookie
-      if (/anti-bot|login|scaduto/.test(msg)) setShowLogin(true);
+      // Verifica anti-bot: il server non passa, il browser dell'utente sì
+      if (/anti-bot/.test(msg)) setBlocked(true);
+      // Login richiesto o cookie scaduto: si propone di incollare il cookie
+      else if (/login|scaduto/.test(msg)) setShowLogin(true);
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Pagina scaricata dal browser dell'utente tramite l'estensione, poi analizzata dal server. */
+  async function analyzeWithExtension(target = url) {
+    setError('');
+    setGrantOrigin(null);
+    setBusy(true);
+    try {
+      const r = await fetchViaExtension(target.trim());
+      if ('page' in r) {
+        const res = await watchApi.preview(target.trim(), undefined, r.page);
+        setExtPage(r.page);
+        setFetcher('EXTENSION');
+        setBlocked(false);
+        applyPreview(res);
+        return;
+      }
+      if (r.error === 'permission') {
+        setGrantOrigin(r.origin);
+        setError(`L'estensione ha bisogno del permesso per aprire ${hostname(target)}.`);
+      } else if (r.error === 'challenge') {
+        setError('Il sito chiede la verifica anti-bot anche nel tuo browser: aprilo in una scheda, spunta la casella, poi riprova.');
+      } else if (r.error === 'reload') {
+        setError('L\'estensione è stata aggiornata: ricarica questa pagina e riprova.');
+      } else {
+        setError(`L'estensione non è riuscita ad aprire la pagina${r.message ? `: ${r.message}` : ''}.`);
+      }
+    } catch (err) {
+      setError(`${(err as Error).message}.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyPreview(res: WatchPreview) {
+    setShowLogin(false);
+    setForum(res.forum ?? null);
+    setAuth(res.auth);
+    if (!editing) setIntervalMinutes(res.forum ? DEFAULT_FORUM_INTERVAL : DEFAULT_SITE_INTERVAL);
+    setFinalUrl(res.finalUrl);
+    setAreas(res.areas);
+    setFeeds(res.feeds);
+    setThread(res.thread);
+    setFollowThread(!!res.thread && (!editing || editing.mode === 'THREAD'));
+    if (editing) setRetarget(true);
+    // In modifica si ripropone la scelta attuale, se è ancora valida sulla stessa pagina
+    if (editing && sameUrl(res.finalUrl, editing.url) && editing.mode !== 'THREAD') {
+      if (editing.mode === 'FEED' && editing.feedUrl) {
+        const fu = editing.feedUrl;
+        if (!res.feeds.some((f) => f.url === fu)) setFeeds([{ url: fu, title: 'Feed attuale', itemCount: 0, sample: [] }, ...res.feeds]);
+        setFeedUrl(fu);
+        setSelector('');
+      } else if (editing.selector) {
+        setSelector(editing.selector);
+        setFeedUrl('');
+        if (!res.areas.some((a) => a.selector === editing.selector)) setManualSelector(editing.selector);
+      }
+    } else if (res.thread && (!editing || editing.mode === 'THREAD')) {
+      setFeedUrl('');
+      setSelector('');
+    } else if (res.feeds.length > 0) {
+      setFeedUrl(res.feeds[0].url);
+      setSelector('');
+    } else {
+      const first = res.areas.find((a) => !a.isNavigation) ?? res.areas[0];
+      setFeedUrl('');
+      setSelector(first?.selector ?? '');
+    }
+    setStep('area');
   }
 
   async function tryManual() {
@@ -239,7 +290,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     setError('');
     setBusy(true);
     try {
-      const res = await watchApi.preview(finalUrl || url.trim(), manualSelector.trim());
+      const res = await watchApi.preview(finalUrl || url.trim(), manualSelector.trim(), fetcher === 'EXTENSION' ? extPage ?? undefined : undefined);
       setManualItems(res.items);
       if (res.items.length > 0) chooseArea(manualSelector.trim());
     } catch (err) {
@@ -290,6 +341,7 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
           intervalMinutes,
           category: category.trim() || null,
           delivery,
+          ...(fetcher !== editing.fetcher && { fetcher }),
           ...(retarget && {
             url: finalUrl || url.trim(),
             kind: forum ? 'FORUM' as const : 'SITE' as const,
@@ -308,7 +360,8 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
         filter: filter.trim(),
         intervalMinutes,
         category: category.trim() || null,
-          delivery,
+        delivery,
+        fetcher,
         bookmarkId,
       });
       onCreated(source);
@@ -609,6 +662,21 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
 
       {step === 'settings' && (
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) save(); }}>
+          {fetcher === 'EXTENSION' && (
+            <p className="text-xs mb-4 px-3 py-2 rounded-md flex items-center gap-2 flex-wrap" style={{ background: 'var(--accent-soft)', color: 'var(--accent-text)' }}>
+              <Puzzle size={13} aria-hidden="true" />
+              <span className="flex-1 min-w-0">Controllata dal tuo browser con l&apos;estensione Linko (il server è bloccato da questo sito).</span>
+              {editing?.fetcher === 'EXTENSION' && (
+                <button type="button" className="underline" onClick={() => setFetcher('SERVER')}>Riprova dal server</button>
+              )}
+            </p>
+          )}
+          {fetcher === 'SERVER' && editing?.fetcher === 'EXTENSION' && (
+            <p className="text-xs mb-4 px-3 py-2 rounded-md" style={{ background: 'var(--surface-hover)' }}>
+              Al salvataggio la fonte torna a essere controllata dal server.{' '}
+              <button type="button" className="underline" onClick={() => setFetcher('EXTENSION')}>Annulla</button>
+            </p>
+          )}
           <label className="field-label" htmlFor="watch-name">Nome</label>
           <input id="watch-name" name="name" className="input" autoComplete="off" data-autofocus value={name} onChange={(e) => setName(e.target.value)} />
 
@@ -687,6 +755,48 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
       <div aria-live="polite">
         {error && <div className="alert-error mt-4">{error}</div>}
       </div>
+
+      {(blocked || grantOrigin) && step === 'url' && !busy && (
+        <div className="card p-4 mt-4" style={{ background: 'var(--surface-2)' }}>
+          <h3 className="flex items-center gap-2 font-semibold text-fg-strong mb-1">
+            <Puzzle size={15} aria-hidden="true" /> Controllalo dal tuo browser
+          </h3>
+          <p className="text-xs text-fg-muted mb-3">
+            {hostname(url)} blocca i server con una verifica anti-bot, ma lascia passare il tuo browser.
+            Con l&apos;estensione Linko è il tuo Chrome o Brave ad aprire la pagina e a mandarla a Linko, anche per i controlli successivi
+            (finché il computer è acceso e il browser aperto).
+          </p>
+          {ext === undefined && <div className="spinner" style={{ width: 16, height: 16 }} aria-label="Cerco l'estensione…" />}
+          {ext === null && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="/extension" target="_blank" rel="noopener" className="btn btn-primary btn-sm">Installa l&apos;estensione</a>
+              <span className="text-xs text-fg-faint">Dopo l&apos;installazione ricarica questa pagina e riaggiungi la fonte.</span>
+            </div>
+          )}
+          {ext && !ext.connected && (
+            <div className="flex flex-wrap items-center gap-2">
+              <a href="/extension" target="_blank" rel="noopener" className="btn btn-primary btn-sm">Collega l&apos;estensione</a>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setExt(undefined)}>Fatto, ricontrolla</button>
+            </div>
+          )}
+          {ext?.connected && !grantOrigin && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => analyzeWithExtension()}>
+              <Puzzle size={14} aria-hidden="true" /> Analizza con l&apos;estensione
+            </button>
+          )}
+          {ext?.connected && grantOrigin && (
+            <div className="flex flex-col gap-2 items-start">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => grantExtension([grantOrigin])}>
+                Concedi il permesso per {hostname(grantOrigin)}
+              </button>
+              <span className="text-xs text-fg-faint">
+                Si apre una scheda dell&apos;estensione: premi <strong>Consenti</strong>, torna qui e{' '}
+                <button type="button" className="underline text-accent-text" onClick={() => analyzeWithExtension()}>riprova l&apos;analisi</button>.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {showLogin && step !== 'settings' && !busy && (
         <div className="card p-4 mt-4" style={{ background: 'var(--surface-2)' }}>

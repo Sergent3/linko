@@ -3,7 +3,9 @@
  *
  * Job sulla coda linko-watch:
  *   tick     ogni minuto: accoda un "check" per ogni fonte scaduta
- *   check    scarica la fonte, estrae gli elementi, applica il filtro, salva i nuovi
+ *   check    scarica la fonte, estrae gli elementi, applica il filtro, salva i nuovi;
+ *            per le fonti controllate dall'estensione del browser la pagina arriva
+ *            già scaricata nel job (page) e il server non contatta il sito
  *   preview  analizza una pagina per il wizard (aree suggerite / elementi di un selettore)
  *   verify   prova il cookie di un sito (Accessi ai siti) e dice se il login è valido
  *   cleanup  ogni giorno: elimina elementi letti vecchi e registro controlli
@@ -17,7 +19,7 @@
 import { createHash } from 'crypto';
 import { Job, Queue } from 'bullmq';
 import { prisma } from '../lib/prisma';
-import { fetchPage, httpErrorMessage, type SiteAuth } from '../watch/http';
+import { fetchPage, httpErrorMessage, type FetchedPage, type SiteAuth } from '../watch/http';
 import { assessAuth, AuthExpiredError, expiredAuthFor, expiredMessage, loadAuths, type AuthOutcome } from '../watch/credentials';
 import { extractItems, stableKeyUrl, suggestAreas, type ExtractedItem, type SuggestedArea } from '../watch/extract';
 import { applyFilter, parseFilter } from '../watch/filter';
@@ -40,8 +42,8 @@ const CHECK_RETENTION_DAYS = 30;
 
 export type WatchJobData =
   | { type: 'tick' }
-  | { type: 'check'; sourceId: string }
-  | { type: 'preview'; url: string; selector?: string; userId?: string }
+  | { type: 'check'; sourceId: string; page?: FetchedPage }
+  | { type: 'preview'; url: string; selector?: string; userId?: string; page?: FetchedPage }
   | { type: 'verify'; userId: string; credentialId: string; url: string }
   | { type: 'content'; userId: string; url: string }
   | { type: 'telegram'; action: 'verify'; token: string }
@@ -95,6 +97,22 @@ function itemKey(url: string): string {
   return createHash('sha256').update(url).digest('hex');
 }
 
+type Fetcher = (url: string) => Promise<FetchedPage>;
+
+/**
+ * Pagina scaricata dall'estensione del browser: è l'unica disponibile, il server
+ * non deve contattare il sito (lo bloccherebbe). Le richieste successive
+ * (feed candidati, ultima pagina di un thread) falliscono con un messaggio chiaro.
+ */
+export function providedPage(page: FetchedPage): Fetcher {
+  let used = false;
+  return async () => {
+    if (used) throw new Error('Pagina non disponibile: questa fonte è controllata dall\'estensione del browser');
+    used = true;
+    return page;
+  };
+}
+
 function addMinutes(d: Date, m: number): Date {
   return new Date(d.getTime() + m * 60_000);
 }
@@ -114,8 +132,9 @@ async function tick(queue: Queue): Promise<number> {
   const now = new Date();
   // Riepiloghi giornalieri arrivati all'ora scelta
   await runDigests(now).catch((err) => console.warn(`[notify] riepiloghi: ${(err as Error).message}`));
+  // Le fonti dell'estensione le scarica il browser dell'utente (vedi backend modules/extension)
   const due = await prisma.watchSource.findMany({
-    where: { isActive: true, nextCheckAt: { lte: now } },
+    where: { isActive: true, fetcher: 'SERVER', nextCheckAt: { lte: now } },
     select: { id: true, currentIntervalMinutes: true },
     orderBy: { nextCheckAt: 'asc' },
     take: TICK_BATCH,
@@ -145,10 +164,11 @@ async function tick(queue: Queue): Promise<number> {
 async function collect(
   source: { mode: string; url: string; selector: string | null; feedUrl: string | null },
   auths: Awaited<ReturnType<typeof loadAuths>>,
+  fetch: Fetcher,
 ): Promise<Candidate[]> {
   if (source.mode === 'FEED') {
     if (!source.feedUrl) throw new Error('Fonte feed senza URL del feed');
-    const res = await fetchPage(source.feedUrl, auths);
+    const res = await fetch(source.feedUrl);
     await assessAuth(res, auths);
     if (res.status >= 400) throw new Error(httpErrorMessage(res.status, 'Il feed'));
     const feed = parseFeed(res.html, res.url);
@@ -160,7 +180,7 @@ async function collect(
   if (source.mode === 'THREAD') {
     const base = threadBase(source.url);
     if (!base) throw new Error('L\'indirizzo non è più quello di una discussione');
-    const page = await fetchPage(latestUrl(base), auths);
+    const page = await fetch(latestUrl(base));
     await assessAuth(page, auths);
     if (page.status >= 400) throw new Error(httpErrorMessage(page.status, 'La discussione'));
     const thread = parseThread(page.html, page.url);
@@ -169,7 +189,7 @@ async function collect(
   }
 
   if (!source.selector) throw new Error('Fonte senza area selezionata');
-  const page = await fetchPage(source.url, auths);
+  const page = await fetch(source.url);
   await assessAuth(page, auths);
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
   const found = extractItems(page.html, page.url, source.selector);
@@ -177,7 +197,7 @@ async function collect(
   return found.map((i) => ({ ...i, key: itemKey(stableKeyUrl(i.url)), tags: [] }));
 }
 
-async function check(sourceId: string): Promise<void> {
+async function check(sourceId: string, provided?: FetchedPage): Promise<void> {
   const source = await prisma.watchSource.findUnique({ where: { id: sourceId } });
   if (!source || !source.isActive) return;
 
@@ -193,7 +213,7 @@ async function check(sourceId: string): Promise<void> {
   }
 
   try {
-    const found = await collect(source, auths);
+    const found = await collect(source, auths, provided ? providedPage(provided) : (u) => fetchPage(u, auths));
 
     const terms = parseFilter(source.filter);
     const matching = found
@@ -279,15 +299,16 @@ async function markAuthError(sourceId: string, message: string, started: number)
 
 // ── preview ───────────────────────────────────────────────────────────────────
 
-async function preview(url: string, selector?: string, userId?: string): Promise<PreviewResult> {
+async function preview(url: string, selector?: string, userId?: string, provided?: FetchedPage): Promise<PreviewResult> {
   const auths = userId ? await loadAuths(userId) : [];
-  const page = await fetchPage(url, auths);
-  const auth = await assessAuth(page, auths);
+  const page = provided ?? await fetchPage(url, auths);
+  const auth = provided ? undefined : await assessAuth(page, auths);
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
 
   // Discussione di un forum: si propongono le nuove risposte, lette dall'ultima pagina
+  // (con la pagina dell'estensione non si possono scaricare altre pagine)
   const base = threadBase(page.url) ?? threadBase(url);
-  if (base && !selector) {
+  if (base && !selector && !provided) {
     const last = await fetchPage(latestUrl(base), auths);
     const thread = last.status < 400 ? parseThread(last.html, last.url) : null;
     if (thread) {
@@ -319,7 +340,7 @@ async function preview(url: string, selector?: string, userId?: string): Promise
     finalUrl: page.url,
     status: page.status,
     isFeed: false,
-    feeds: await discoverFeeds(page.html, page.url, auths),
+    feeds: provided ? [] : await discoverFeeds(page.html, page.url, auths),
     areas: suggestAreas(page.html, page.url),
     items: [],
     auth,
@@ -416,9 +437,9 @@ export function createWatchProcessor(queue: Queue) {
       case 'tick':
         return tick(queue);
       case 'check':
-        return check(job.data.sourceId);
+        return check(job.data.sourceId, job.data.page);
       case 'preview':
-        return preview(job.data.url, job.data.selector, job.data.userId);
+        return preview(job.data.url, job.data.selector, job.data.userId, job.data.page);
       case 'verify':
         return verify(job.data.userId, job.data.credentialId, job.data.url);
       case 'content':

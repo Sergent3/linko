@@ -103,6 +103,21 @@ export interface NotificationSettings {
   chatName?: string;
 }
 
+export type WatchFetcher = 'SERVER' | 'EXTENSION';
+
+/** Pagina scaricata dall'estensione del browser e inviata a Linko. */
+export interface FetchedPage {
+  url: string;
+  status: number;
+  html: string;
+}
+
+export interface ExtensionStatus {
+  tokens: { id: string; browser: string | null; version: string | null; createdAt: string; lastSeenAt: string | null }[];
+  sources: Pick<WatchSource, 'id' | 'name' | 'url' | 'isActive' | 'status' | 'lastError' | 'lastCheckedAt'>[];
+  pollSeconds: number;
+}
+
 export interface WatchSource {
   id: string;
   name: string;
@@ -115,6 +130,8 @@ export interface WatchSource {
   category: string | null;
   position: number;
   delivery: WatchDelivery;
+  /** Chi scarica la pagina: il server, o l'estensione nel browser per i siti con verifica anti-bot */
+  fetcher: WatchFetcher;
   intervalMinutes: number;
   currentIntervalMinutes: number;
   isActive: boolean;
@@ -238,6 +255,7 @@ export interface UpdateWatchSourceDto {
   intervalMinutes?: number;
   category?: string | null;
   delivery?: WatchDelivery;
+  fetcher?: WatchFetcher;
   isActive?: boolean;
 }
 
@@ -253,5 +271,6 @@ export interface CreateWatchSourceDto {
   intervalMinutes: number;
   category?: string | null;
   delivery?: WatchDelivery;
+  fetcher?: WatchFetcher;
   bookmarkId?: string;
 }

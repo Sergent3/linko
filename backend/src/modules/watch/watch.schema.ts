@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fetchedPageSchema } from '../extension/extension.schema';
 
 // Frequenze proposte nel wizard: 15 e 30 minuti (forum veloci), 1 ora, 6 ore, 24 ore
 export const INTERVALS = [15, 30, 60, 360, 1440] as const;
@@ -12,6 +13,8 @@ const selector = z.string().trim().min(1).max(500);
 const filter = z.string().max(500);
 // Come arrivano le novità della fonte (vedi worker/src/watch/notify.ts)
 const delivery = z.enum(['NORMAL', 'INSTANT', 'DIGEST']);
+// Chi scarica la pagina: il server o l'estensione del browser (siti con verifica anti-bot)
+const fetcher = z.enum(['SERVER', 'EXTENSION']);
 
 // Categoria della fonte: stringa vuota o null la tolgono
 const category = z
@@ -26,6 +29,8 @@ const categoryFilter = z.string().trim().min(1).max(40);
 export const previewSchema = z.object({
   url: z.string().url('URL non valido'),
   selector: selector.optional(),
+  // Pagina già scaricata dall'estensione del browser: il server non contatta il sito
+  page: fetchedPageSchema.optional(),
 });
 
 // Una fonte segue un'area della pagina (selector), un feed (feedUrl) o le risposte di una discussione (thread)
@@ -41,6 +46,7 @@ export const createSourceSchema = z
     intervalMinutes: interval.default(60),
     category: category.optional(),
     delivery: delivery.default('NORMAL'),
+    fetcher: fetcher.default('SERVER'),
     bookmarkId: z.string().cuid().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length === 1, {
@@ -61,6 +67,7 @@ export const updateSourceSchema = z
     intervalMinutes: interval.optional(),
     category: category.optional(),
     delivery: delivery.optional(),
+    fetcher: fetcher.optional(),
     isActive: z.boolean().optional(),
   })
   .refine((d) => [!!d.selector, !!d.feedUrl, !!d.thread].filter(Boolean).length <= 1, {

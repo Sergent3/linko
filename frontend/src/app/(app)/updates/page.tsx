@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
   ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
-  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper,
+  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper, Puzzle,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import Modal from '@/components/ui/Modal';
@@ -944,6 +944,7 @@ export default function UpdatesPage() {
                                 ? <MessagesSquare size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />
                                 : <LayoutList size={14} style={{ color: 'var(--text-faint)', flexShrink: 0 }} aria-hidden="true" />}
                       <span className="bookmark-title" style={layout.wrapSourceNames ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : undefined}>{s.name}</span>
+                      {s.fetcher === 'EXTENSION' && <Puzzle size={12} className="shrink-0 text-fg-faint" aria-label="Controllata dall'estensione del browser" />}
                       {s.delivery === 'INSTANT' && <Bell size={12} className="shrink-0 text-fg-faint" aria-label="Notifica subito" />}
                       {s.delivery === 'DIGEST' && <Newspaper size={12} className="shrink-0 text-fg-faint" aria-label="Riepilogo giornaliero" />}
                       {s.unreadCount > 0 && <span className="badge badge-soft">{s.unreadCount}</span>}

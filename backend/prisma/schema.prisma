@@ -45,6 +45,7 @@ model User {
   watchItems    WatchItem[]
   siteCredentials SiteCredential[]
   notificationSettings NotificationSettings?
+  extensionTokens ExtensionToken[]
 }
 
 model RefreshToken {
@@ -169,6 +170,13 @@ enum WatchMode {
   THREAD // nuove risposte di una discussione di un forum (ultima pagina)
 }
 
+// Chi scarica la fonte: il server (worker) o l'estensione nel browser dell'utente,
+// per i siti che bloccano i server con verifiche anti-bot (Cloudflare Turnstile)
+enum WatchFetcher {
+  SERVER
+  EXTENSION
+}
+
 enum WatchStatus {
   PENDING // mai controllata
   OK
@@ -195,6 +203,7 @@ model WatchSource {
   position   Int       @default(0) // ordine personalizzato nella colonna Fonti
   // Come arrivano le novità: solo in Linko, anche come notifica Telegram, o in un riepilogo al giorno
   delivery   WatchDelivery @default(NORMAL)
+  fetcher    WatchFetcher  @default(SERVER)
 
   // Frequenza: base scelta dall'utente, corrente adattata all'attività
   intervalMinutes        Int @default(360)
@@ -216,6 +225,22 @@ model WatchSource {
   checks   WatchCheck[]
 
   @@index([isActive, nextCheckAt])
+  @@index([userId])
+}
+
+// Estensione del browser collegata all'account: il token in chiaro esiste solo
+// nell'estensione, qui c'è l'hash SHA-256
+model ExtensionToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  browser    String? // User-Agent ridotto (es. "Chrome 130 · Windows"), per riconoscerla
+  version    String? // versione dell'estensione all'ultimo contatto
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

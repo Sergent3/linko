@@ -34,7 +34,7 @@ async function assertItem(id: string, userId: string) {
 export async function preview(dto: PreviewDto, userId: string) {
   const job = await watchQueue.add(
     'preview',
-    { type: 'preview', url: dto.url, selector: dto.selector, userId },
+    { type: 'preview', url: dto.url, selector: dto.selector, userId, page: dto.page },
     // I job vanno conservati qualche secondo: se spariscono subito,
     // waitUntilFinished può non ricevere l'evento di completamento
     { removeOnComplete: { age: 60 }, removeOnFail: { age: 60 }, attempts: 1 },
@@ -79,6 +79,7 @@ export async function createSource(dto: CreateSourceDto, userId: string) {
       position: (last._max.position ?? -1) + 1,
       category: dto.category ?? null,
       delivery: dto.delivery,
+      fetcher: dto.fetcher,
       name: dto.name,
       url: dto.url,
       kind: dto.kind,
@@ -110,7 +111,9 @@ export async function updateSource(id: string, dto: UpdateSourceDto, userId: str
     (dto.url !== undefined && dto.url !== source.url) ||
     (target !== null && (target.mode !== source.mode || target.selector !== source.selector || target.feedUrl !== source.feedUrl));
   // Cambiare bersaglio o filtro equivale a ripartire: si ricontrolla subito
-  const reconfigured = retargeted || (dto.filter !== undefined && dto.filter !== source.filter);
+  const reconfigured = retargeted
+    || (dto.filter !== undefined && dto.filter !== source.filter)
+    || (dto.fetcher !== undefined && dto.fetcher !== source.fetcher);
 
   return prisma.watchSource.update({
     where: { id },

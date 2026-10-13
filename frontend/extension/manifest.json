@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Linko",
+  "version": "1.0.0",
+  "description": "Controlla dal tuo browser le fonti di Linko che bloccano i server con verifiche anti-bot.",
+  "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
+  "action": {
+    "default_title": "Linko",
+    "default_popup": "panel.html",
+    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
+  },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "alarms", "scripting"],
+  "host_permissions": ["__LINKO_MATCH__"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "content_scripts": [
+    { "matches": ["__LINKO_MATCH__"], "js": ["config.js", "linko-bridge.js"], "run_at": "document_idle" }
+  ]
+}

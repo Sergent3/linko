@@ -11,6 +11,7 @@ import { tagsRouter } from './modules/tags/tags.router';
 import { importRouter } from './modules/import/import.router';
 import { watchRouter } from './modules/watch/watch.router';
 import { notificationsRouter } from './modules/notifications/notifications.router';
+import { agentRouter, extensionRouter } from './modules/extension/extension.router';
 
 const app = express();
 
@@ -35,6 +36,8 @@ app.get('/health', (_req, res) => {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRouter);
+// L'estensione del browser si autentica col proprio token, non col JWT
+app.use('/api/v1/extension/agent', agentRouter);
 
 // Tutto ciò che segue richiede un JWT valido
 app.use(requireAuth);
@@ -44,6 +47,7 @@ app.use('/api/v1/tags', tagsRouter);
 app.use('/api/v1/import', importRouter);
 app.use('/api/v1/watch', watchRouter);
 app.use('/api/v1/notifications', notificationsRouter);
+app.use('/api/v1/extension', extensionRouter);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((_req, res) => {

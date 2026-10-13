@@ -18,6 +18,8 @@ import type {
   SiteCredential,
   CredentialVerification,
   SaveCredentialDto,
+  ExtensionStatus,
+  FetchedPage,
 } from '@/types/api';
 
 const BASE = '/api/v1';
@@ -270,13 +272,23 @@ export const notificationsApi = {
   removeTelegram: () => request<NotificationSettings>('/notifications/telegram', { method: 'DELETE' }),
 };
 
+// ── Estensione del browser ─────────────────────────────────────────────────────
+
+export const extensionApi = {
+  status: () => request<ExtensionStatus>('/extension'),
+  /** Token per collegare l'estensione: in chiaro solo in questa risposta. */
+  createToken: () => request<{ id: string; token: string }>('/extension/tokens', { method: 'POST' }),
+  revokeToken: (id: string) => request<void>(`/extension/tokens/${id}`, { method: 'DELETE' }),
+};
+
 // ── Aggiornamenti (monitoraggio fonti) ─────────────────────────────────────────
 
 export const watchApi = {
-  preview: (url: string, selector?: string) =>
+  /** Analizza una pagina; con page (scaricata dall'estensione) il server non contatta il sito. */
+  preview: (url: string, selector?: string, page?: FetchedPage) =>
     request<WatchPreview>('/watch/preview', {
       method: 'POST',
-      body: JSON.stringify({ url, selector }),
+      body: JSON.stringify({ url, selector, page }),
     }),
 
   sources: () => request<WatchSource[]>('/watch/sources'),

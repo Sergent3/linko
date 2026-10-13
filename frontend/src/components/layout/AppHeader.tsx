@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Download, KeyRound, LogOut, Rss, Search, Upload } from 'lucide-react';
+import { Bookmark, Download, KeyRound, LogOut, Puzzle, Rss, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -138,6 +138,9 @@ export default function AppHeader() {
               {expired > 0 && (
                 <span className="badge ml-auto" style={{ background: 'var(--danger-strong)' }}>{expired} scadut{expired === 1 ? 'o' : 'i'}</span>
               )}
+            </Link>
+            <Link href="/extension" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+              <Puzzle size={15} aria-hidden="true" /> Estensione del browser
             </Link>
             <Link href="/import" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
               <Upload size={15} aria-hidden="true" /> Importa segnalibri
