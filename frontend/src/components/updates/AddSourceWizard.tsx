@@ -202,18 +202,28 @@ export default function AddSourceWizard({ onClose, onCreated, sources = [], init
     setError('');
     setBlocked(false);
     setBusy(true);
+    let antiBot = false;
     try {
       applyPreview(await watchApi.preview(target.trim()));
     } catch (err) {
       const msg = (err as Error).message;
-      setError(`${msg}.`);
       // Verifica anti-bot: il server non passa, il browser dell'utente sì
-      if (/anti-bot/.test(msg)) setBlocked(true);
-      // Login richiesto o cookie scaduto: si propone di incollare il cookie
-      else if (/login|scaduto/.test(msg)) setShowLogin(true);
+      if (/anti-bot/.test(msg)) antiBot = true;
+      else {
+        setError(`${msg}.`);
+        // Login richiesto o cookie scaduto: si propone di incollare il cookie
+        if (/login|scaduto/.test(msg)) setShowLogin(true);
+      }
     } finally {
       setBusy(false);
     }
+    if (!antiBot) return;
+    setBlocked(true);
+    // Estensione già collegata: si passa subito al browser dell'utente
+    const found = await detectExtension();
+    setExt(found);
+    if (found?.connected) return analyzeWithExtension(target);
+    setError(`${hostname(target)} blocca i server con una verifica anti-bot.`);
   }
 
   /** Pagina scaricata dal browser dell'utente tramite l'estensione, poi analizzata dal server. */
