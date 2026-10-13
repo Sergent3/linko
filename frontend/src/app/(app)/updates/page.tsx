@@ -904,7 +904,7 @@ export default function UpdatesPage() {
             >
               <SiteIcon site={g.site} />
               <span className="bookmark-title font-semibold" translate="no">{g.site}</span>
-              <span className="text-xs text-fg-faint tabular-nums">{g.sources.length}</span>
+              <span className="text-xs text-fg-faint tabular-nums shrink-0" title={`${g.sources.length} fonti seguite`}>{g.sources.length} fonti</span>
               {g.unread > 0 && <span className="badge badge-soft">{g.unread}</span>}
             </button>
           </div>
@@ -1362,7 +1362,7 @@ export default function UpdatesPage() {
                       >
                         <Folder size={14} className="shrink-0 text-fg-faint" aria-hidden="true" />
                         <span className="bookmark-title text-xs font-semibold uppercase tracking-wider">{sec.category ?? 'Senza categoria'}</span>
-                        <span className="text-xs text-fg-faint tabular-nums">{sec.count}</span>
+                        <span className="text-xs text-fg-faint tabular-nums shrink-0 normal-case">{sec.count} {sec.count === 1 ? 'fonte' : 'fonti'}</span>
                         {sec.unread > 0 && <span className="badge badge-soft">{sec.unread}</span>}
                       </button>
                       {sec.category && (
