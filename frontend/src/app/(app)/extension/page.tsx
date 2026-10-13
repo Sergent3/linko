@@ -13,8 +13,8 @@ import type { ExtensionStatus } from '@/types/api';
 const fmtDate = new Intl.DateTimeFormat('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 function newer(a: string, b: string): boolean {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
+  const pa = String(a ?? '').split('.').map(Number);
+  const pb = String(b ?? '').split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
   return false;
 }
@@ -96,7 +96,11 @@ export default function ExtensionPage() {
     setBusy('poll');
     try {
       const state = await pollExtension();
-      if (state) setExt(state);
+      if (!state) {
+        ui.toast('L\'estensione non ha risposto: se l\'hai appena aggiornata, ricarica questa pagina', { kind: 'error' });
+        return;
+      }
+      setExt(state);
       await load();
       ui.toast('Controllo completato');
     } finally {

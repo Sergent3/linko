@@ -45,14 +45,19 @@ function call<T>(payload: Record<string, unknown>, timeoutMs: number): Promise<T
 }
 
 /** Stato dell'estensione, o null se non è installata (o non è per questo indirizzo di Linko). */
-export async function detectExtension(): Promise<ExtensionState | null> {
-  const r = await call<ExtensionState & { error?: string }>({ type: 'hello' }, 3000);
-  return r && !r.error ? r : null;
+/** Risposta valida dell'estensione, o null (errore, estensione ricaricata, nessuna risposta). */
+function asState(r: unknown): ExtensionState | null {
+  const s = r as (ExtensionState & { error?: string }) | null;
+  return s && !s.error && typeof s.version === 'string' ? s : null;
 }
 
-export const connectExtension = (token: string) => call<ExtensionState>({ type: 'connect', token }, 5000);
-export const disconnectExtension = () => call<ExtensionState>({ type: 'disconnect' }, 5000);
-export const pollExtension = () => call<ExtensionState>({ type: 'poll' }, 120_000);
+export async function detectExtension(): Promise<ExtensionState | null> {
+  return asState(await call({ type: 'hello' }, 3000));
+}
+
+export const connectExtension = async (token: string) => asState(await call({ type: 'connect', token }, 5000));
+export const disconnectExtension = async () => asState(await call({ type: 'disconnect' }, 5000));
+export const pollExtension = async () => asState(await call({ type: 'poll' }, 120_000));
 /** Apre il pannello dell'estensione per concedere il permesso a questi siti. */
 export const grantExtension = (origins: string[]) => call<{ ok: boolean }>({ type: 'grant', origins }, 5000);
 

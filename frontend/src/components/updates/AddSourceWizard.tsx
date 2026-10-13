@@ -71,7 +71,7 @@ const DEFAULT_FORUM_INTERVAL = 30;
 
 /** L'estensione installata è più vecchia di quella che distribuisce Linko? */
 function outdated(ext: ExtensionState | null | undefined) {
-  if (!ext) return false;
+  if (!ext?.version) return false;
   const a = EXTENSION_VERSION.split('.').map(Number);
   const b = ext.version.split('.').map(Number);
   for (let i = 0; i < 3; i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
