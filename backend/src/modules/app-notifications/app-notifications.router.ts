@@ -18,7 +18,10 @@ appNotificationsRouter.post('/:id/read', async (req, res, next) => {
 });
 
 appNotificationsRouter.get('/push/key', async (req, res, next) => {
-  try { res.json({ publicKey: await service.vapidPublicKey(req.get('origin')) }); } catch (err) { next(err); }
+  try { // Origin non arriva sulle GET dello stesso sito: si ricava dal Referer
+    let origin = req.get('origin');
+    try { origin ??= new URL(req.get('referer') ?? '').origin; } catch { /* nessuno dei due */ }
+    res.json({ publicKey: await service.vapidPublicKey(origin) });; } catch (err) { next(err); }
 });
 
 appNotificationsRouter.post('/push/subscribe', async (req, res, next) => {
