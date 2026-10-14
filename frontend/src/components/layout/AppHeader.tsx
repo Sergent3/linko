@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Download, KeyRound, LogOut, Puzzle, Rss, Search, Upload } from 'lucide-react';
+import { Bookmark, Download, KeyRound, LogOut, MonitorSmartphone, Puzzle, Rss, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -27,7 +27,11 @@ export default function AppHeader() {
   const [unread, setUnread] = useState(0);
   const [expired, setExpired] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Il viewer remoto esiste solo sulla versione HTTPS (/viewer servito da Caddy)
+  const [viewerAvailable, setViewerAvailable] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setViewerAvailable(window.location.protocol === 'https:'); }, []);
 
   // Contatore non letti: all'avvio, ogni minuto e quando una pagina lo comunica
   useEffect(() => {
@@ -108,6 +112,13 @@ export default function AppHeader() {
           <span className="flex-1 text-left">Ricerca rapida…</span>
           <kbd className="text-[11px] text-fg-faint border border-line rounded px-1.5">Ctrl&nbsp;K</kbd>
         </button>
+      )}
+
+      {viewerAvailable && (
+        // <a> e non <Link>: /viewer non fa parte dell'app Next
+        <a href="/viewer/" className="icon-btn" title="Viewer remoto" aria-label="Apri il viewer remoto">
+          <MonitorSmartphone size={18} aria-hidden="true" />
+        </a>
       )}
 
       <div className="relative" ref={menuRef}>
