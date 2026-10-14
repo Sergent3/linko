@@ -1,0 +1,11 @@
+# Frontend in modalità sviluppo (next dev, codice montato dall'host, ricaricamento automatico):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
+# Più lento da aprire (JavaScript non ottimizzato, ~10 MB per pagina).
+services:
+  frontend:
+    build:
+      target: development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules   # preserva node_modules dal build (non sovrascrivere con host)
+      - /app/.next          # preserva cache Next.js

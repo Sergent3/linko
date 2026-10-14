@@ -136,7 +136,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: development
+      # Versione ottimizzata (next build): le modifiche al codice richiedono
+      #   ./frontend/build-prod.sh
+      # Per lo sviluppo con ricaricamento automatico: docker-compose.dev.yml
+      target: prebuilt
     restart: unless-stopped
     networks: [linko-net]
     security_opt:
@@ -149,7 +152,3 @@ services:
       INTERNAL_API_URL: http://backend:3001
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules   # preserva node_modules dal build (non sovrascrivere con host)
-      - /app/.next          # preserva cache Next.js
