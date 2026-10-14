@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bookmark, Download, KeyRound, LogOut, MonitorSmartphone, Puzzle, Rss, Search, Upload } from 'lucide-react';
+import { Bookmark, Download, HardDriveDownload, KeyRound, LogOut, MonitorSmartphone, Puzzle, Rss, Search, Upload } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
@@ -151,6 +151,12 @@ export default function AppHeader() {
             <Link href="/extension" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
               <Puzzle size={15} aria-hidden="true" /> Estensione del browser
             </Link>
+            {viewerAvailable && (
+              // File scaricati nel viewer remoto: stanno sul VPS, la pagina è del viewer
+              <a href="/viewer/files" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
+                <HardDriveDownload size={15} aria-hidden="true" /> File scaricati (viewer)
+              </a>
+            )}
             <Link href="/import" className="menu-item" role="menuitem" onClick={() => setMenuOpen(false)}>
               <Upload size={15} aria-hidden="true" /> Importa segnalibri
             </Link>
