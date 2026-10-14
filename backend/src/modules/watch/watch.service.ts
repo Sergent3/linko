@@ -214,6 +214,12 @@ export async function listItems(dto: ListItemsDto, userId: string) {
   return { data, meta: { page: dto.page, limit: dto.limit, total, totalPages: Math.ceil(total / dto.limit) } };
 }
 
+/** Un elemento dell'utente (per il viewer remoto, che apre il suo indirizzo). */
+export async function getItem(id: string, userId: string) {
+  const item = await assertItem(id, userId);
+  return { id: item.id, url: item.url, title: item.title, sourceId: item.sourceId };
+}
+
 export async function updateItem(id: string, dto: UpdateItemDto, userId: string) {
   await assertItem(id, userId);
   return prisma.watchItem.update({ where: { id }, data: dto });

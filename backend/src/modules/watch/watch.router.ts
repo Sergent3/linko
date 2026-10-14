@@ -96,6 +96,12 @@ watchRouter.patch('/items/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+watchRouter.get('/items/:id', async (req, res, next) => {
+  try {
+    res.json(await service.getItem(req.params.id, req.user.id));
+  } catch (err) { next(err); }
+});
+
 watchRouter.get('/items/:id/content', async (req, res, next) => {
   try {
     res.json(await service.itemContent(req.params.id, req.user.id));

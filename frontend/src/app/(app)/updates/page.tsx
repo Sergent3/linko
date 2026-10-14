@@ -15,7 +15,7 @@ import NotificationsModal from '@/components/updates/NotificationsModal';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
-import { useViewerAvailable, viewerSourceHref } from '@/lib/viewer';
+import { useViewerAvailable, viewerItemHref, viewerSourceHref } from '@/lib/viewer';
 import { groupItems, type ItemGroup } from '@/lib/group-items';
 import {
   clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout, type SourceSort,
@@ -333,6 +333,14 @@ export default function UpdatesPage() {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, isRead } : i)));
     adjustUnread(item.sourceId, isRead ? -1 : 1);
     try { await watchApi.updateItem(item.id, { isRead }); } catch { loadItems(1); loadSources(); }
+  }
+
+  /** Apre l'elemento nel viewer remoto (stessa scheda), dopo averlo segnato come letto. */
+  function openInViewer(e: React.MouseEvent<HTMLAnchorElement>, item: WatchItem) {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { setRead(item, true); return; }
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    setRead(item, true).finally(() => { window.location.href = href; });
   }
 
   async function setReadMany(list: WatchItem[], isRead: boolean) {
@@ -1058,6 +1066,11 @@ export default function UpdatesPage() {
           <button type="button" className="icon-btn" onClick={() => { setCursorId(it.id); openPreview(it); }} aria-label="Anteprima" title="Anteprima (p)">
             <Eye size={15} aria-hidden="true" />
           </button>
+          {viewerAvailable && (
+            <a href={viewerItemHref(it.id)} className="icon-btn" onClick={(e) => openInViewer(e, it)} aria-label="Apri nel viewer remoto" title="Apri nel viewer remoto">
+              <MonitorSmartphone size={15} aria-hidden="true" />
+            </a>
+          )}
           <button
             type="button"
             className="icon-btn"
@@ -1145,6 +1158,17 @@ export default function UpdatesPage() {
             <button type="button" className="icon-btn" onClick={() => { setCursorId(id); openPreview(target); }} aria-label="Anteprima" title={g.thread ? 'Anteprima del primo post da leggere (p)' : 'Anteprima (p)'}>
               <Eye size={15} aria-hidden="true" />
             </button>
+            {viewerAvailable && (
+              <a
+                href={viewerItemHref(target.id)}
+                className="icon-btn"
+                onClick={(e) => openInViewer(e, target)}
+                aria-label="Apri nel viewer remoto"
+                title={g.thread ? 'Apri nel viewer il primo post da leggere' : 'Apri nel viewer remoto'}
+              >
+                <MonitorSmartphone size={15} aria-hidden="true" />
+              </a>
+            )}
             <button
               type="button"
               className="icon-btn"

@@ -14,7 +14,15 @@ export function useViewerAvailable(): boolean {
   return available;
 }
 
-/** Pagina seguita in Aggiornamenti aperta nel viewer remoto. */
-export function viewerSourceHref(sourceId: string): string {
-  return `/viewer/view?source=${encodeURIComponent(sourceId)}`;
+/**
+ * Pagina seguita in Aggiornamenti aperta nel viewer remoto.
+ * back = pagina di Linko a cui torna la ✕ del viewer.
+ */
+export function viewerSourceHref(sourceId: string, back = '/updates'): string {
+  return `/viewer/view?source=${encodeURIComponent(sourceId)}&back=${encodeURIComponent(back)}`;
+}
+
+/** Elemento di Aggiornamenti (il link aggiornato) aperto nel viewer remoto. */
+export function viewerItemHref(itemId: string, back = '/updates'): string {
+  return `/viewer/view?item=${encodeURIComponent(itemId)}&back=${encodeURIComponent(back)}`;
 }
