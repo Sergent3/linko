@@ -116,6 +116,8 @@ function every(minutes: number): string {
  * Maniglia di ridimensionamento: trascina (mouse o dito), frecce da tastiera,
  * doppio clic per tornare al valore predefinito.
  */
+const SPLIT_MIN = 80;
+
 function ResizeHandle({ vertical, value, min, max, label, onChange, onReset, className }: {
   vertical: boolean;
   value: number;
@@ -201,6 +203,10 @@ export default function UpdatesPage() {
   const [pendingCategories, setPendingCategories] = useState<string[]>([]);
   // Trascinamento delle fonti: id trascinati e destinazione evidenziata
   const dragIds = useRef<string[] | null>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
+  const sourcesPaneRef = useRef<HTMLDivElement>(null);
+  // Schermo diviso su telefono: agli aggiornamenti restano almeno 140 px
+  const splitMax = () => Math.max(SPLIT_MIN, (splitRef.current?.clientHeight ?? 600) - 140);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   // Anteprima: id dell'elemento aperto (l'oggetto si rilegge dagli elementi caricati)
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -1235,8 +1241,8 @@ export default function UpdatesPage() {
                 type="button"
                 role="menuitem"
                 className="menu-item"
-                onClick={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT, sidebarHeight: null })}
-                disabled={layout.sidebarWidth === SIDEBAR_DEFAULT && layout.sidebarHeight == null}
+                onClick={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT, sidebarHeight: null, mobileSourcesHeight: null })}
+                disabled={layout.sidebarWidth === SIDEBAR_DEFAULT && layout.sidebarHeight == null && layout.mobileSourcesHeight == null}
               >
                 <span style={{ width: 15 }} aria-hidden="true" /> Dimensioni fonti predefinite
               </button>
@@ -1251,14 +1257,20 @@ export default function UpdatesPage() {
         </button>
       </div>
 
+      {/* Su telefono, con le Fonti aperte: schermo diviso Fonti / aggiornamenti (vedi .updates-split) */}
       <div
-        className="flex flex-col md:flex-row gap-4 md:gap-0 px-4 pb-10 mx-auto items-start"
-        style={{ maxWidth: layout.fullWidth ? 'none' : 1400 }}
+        ref={splitRef}
+        className={`updates-split ${layout.sidebarOpen ? 'has-sources' : ''} flex flex-col md:flex-row gap-4 md:gap-0 px-4 pb-10 mx-auto items-start`}
+        style={{
+          maxWidth: layout.fullWidth ? 'none' : 1400,
+          ...(layout.mobileSourcesHeight != null && { '--sources-h': `${layout.mobileSourcesHeight}px` }),
+        } as React.CSSProperties}
       >
         {/* ── Fonti ──────────────────────────────────────────────────────── */}
-        {layout.sidebarOpen && (
+        {layout.sidebarOpen && (<>
         <div
-          className={`w-full md:w-[var(--sources-w)] md:shrink-0 flex items-stretch ${layout.sidebarSticky ? 'md:sticky' : ''}`}
+          ref={sourcesPaneRef}
+          className={`sources-pane w-full md:w-[var(--sources-w)] md:shrink-0 flex items-stretch ${layout.sidebarSticky ? 'md:sticky' : ''}`}
           style={{ top: 'calc(var(--header-h) + 12px)', '--sources-w': `${layout.sidebarWidth}px` } as React.CSSProperties}
         >
         <div className="flex-1 min-w-0">
@@ -1342,7 +1354,7 @@ export default function UpdatesPage() {
           </div>
           <ul
             ref={sourceListRef}
-            className={`py-1 overflow-y-auto ${layout.sidebarHeight == null ? `max-h-[40vh] ${layout.sidebarSticky ? 'md:max-h-[calc(100vh-200px)]' : 'md:max-h-none'}` : ''}`}
+            className={`source-list py-1 overflow-y-auto ${layout.sidebarHeight == null ? `max-h-[40vh] ${layout.sidebarSticky ? 'md:max-h-[calc(100vh-200px)]' : 'md:max-h-none'}` : ''}`}
             style={{ listStyle: 'none', height: layout.sidebarHeight ?? undefined }}
           >
             <li>
@@ -1423,6 +1435,7 @@ export default function UpdatesPage() {
           </ul>
           <ResizeHandle
             vertical={false}
+            className="hidden md:flex"
             label="Altezza dell'elenco fonti"
             value={layout.sidebarHeight ?? sourceListRef.current?.clientHeight ?? 400}
             min={LIST_MIN_HEIGHT}
@@ -1443,10 +1456,21 @@ export default function UpdatesPage() {
           onReset={() => updateLayout({ sidebarWidth: SIDEBAR_DEFAULT })}
         />
         </div>
-        )}
+        {/* Telefono: più spazio alle Fonti = meno agli aggiornamenti, e viceversa */}
+        <ResizeHandle
+          vertical={false}
+          className="split-handle md:hidden"
+          label="Spazio tra Fonti e aggiornamenti"
+          value={layout.mobileSourcesHeight ?? sourcesPaneRef.current?.offsetHeight ?? 300}
+          min={SPLIT_MIN}
+          max={splitMax()}
+          onChange={(h) => updateLayout({ mobileSourcesHeight: Math.round(Math.min(splitMax(), Math.max(SPLIT_MIN, h))) })}
+          onReset={() => updateLayout({ mobileSourcesHeight: null })}
+        />
+        </>)}
 
         {/* ── Timeline ───────────────────────────────────────────────────── */}
-        <section className="flex-1 min-w-0 w-full" aria-label="Elementi">
+        <section className="timeline-pane flex-1 min-w-0 w-full" aria-label="Elementi">
           {expiredCreds.map((c) => (
             <div key={c.id} className="alert-error flex flex-wrap items-center gap-3 mb-4" role="alert">
               <KeyRound size={16} className="shrink-0" aria-hidden="true" />

@@ -11,6 +11,8 @@ export interface UpdatesLayout {
   sidebarOpen: boolean;
   /** Altezza dell'elenco fonti (px); null = automatica */
   sidebarHeight: number | null;
+  /** Su telefono: altezza delle Fonti nello schermo diviso con gli aggiornamenti (px); null = 40% */
+  mobileSourcesHeight: number | null;
   /** La colonna resta ferma mentre si scorre la pagina */
   sidebarSticky: boolean;
   /** Nomi delle fonti su più righe invece che troncati */
@@ -40,6 +42,7 @@ const DEFAULTS: UpdatesLayout = {
   sidebarWidth: SIDEBAR_DEFAULT,
   sidebarOpen: true,
   sidebarHeight: null,
+  mobileSourcesHeight: null,
   sidebarSticky: false,
   wrapSourceNames: false,
   fullWidth: false,
@@ -72,6 +75,7 @@ export function useUpdatesLayout(): [UpdatesLayout, (patch: Partial<UpdatesLayou
           collapsedCategories: Array.isArray(merged.collapsedCategories) ? merged.collapsedCategories.filter((x) => typeof x === 'string') : [],
           sourceSort: (['custom', 'unread', 'name', 'recent'] as const).includes(merged.sourceSort) ? merged.sourceSort : 'custom',
           sidebarHeight: merged.sidebarHeight == null ? null : clampHeight(Number(merged.sidebarHeight) || LIST_MIN_HEIGHT),
+          mobileSourcesHeight: merged.mobileSourcesHeight == null ? null : clampHeight(Number(merged.mobileSourcesHeight) || LIST_MIN_HEIGHT),
         });
       }
     } catch { /* storage non disponibile: valori predefiniti */ }
