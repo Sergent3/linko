@@ -51,6 +51,12 @@ Piattaforma web per salvare e organizzare segnalibri del browser con tagging aut
 - Arricchimento via proxy SOCKS5 se Tor è installato (`127.0.0.1:9050`)
 - Tagging AI basato su titolo/descrizione se il sito non è raggiungibile
 
+### Versione HTTPS e viewer remoto
+- **HTTPS**: https://linko.51-38-82-241.sslip.io. È Caddy di `~/code-server`, che inoltra a `linko-frontend-1:3000` sulla rete `linko_linko-net`. La versione HTTP (`:3000`/`:3001`) resta attiva e invariata.
+- **Viewer remoto** (`/viewer`, solo HTTPS): segnalibri, fonti di Aggiornamenti e file scaricati si aprono in un Chrome sul VPS. Al dispositivo arrivano solo le immagini della pagina. Progetto separato in `~/linko-viewer`: vedi il suo README.
+  - Funzioni: download sul VPS, modalità video, portachiavi, navigazione via Tor, agente per le fonti protette da Cloudflare (al posto dell'estensione).
+  - Pulsanti in Linko, visibili solo in HTTPS tramite `frontend/src/lib/viewer.ts` (`useViewerAvailable`): icona nell'intestazione, icona accanto a "Apri la pagina" in Aggiornamenti, voce "File scaricati (viewer)" nel menu utente.
+
 ### Bookmarklet
 - Salvataggio rapido dalla pagina corrente con popup minimale
 - Onboarding "prima volta": se l'utente non ha bookmark, propone import massivo
@@ -214,6 +220,7 @@ linko/
 │       └── tag.processor.ts         # AI tagging via Claude API
 ├── frontend/
 │   └── src/
+│       ├── lib/viewer.ts            # pulsanti del viewer remoto (solo HTTPS)
 │       ├── app/(app)/bookmarks/     # pagina principale
 │       ├── app/save-quick/          # popup bookmarklet
 │       └── components/bookmarks/
