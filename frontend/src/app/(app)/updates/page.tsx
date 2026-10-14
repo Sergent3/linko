@@ -6,6 +6,7 @@ import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
   ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
   ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper, Puzzle,
+  MonitorSmartphone,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
 import Modal from '@/components/ui/Modal';
@@ -14,6 +15,7 @@ import NotificationsModal from '@/components/updates/NotificationsModal';
 import { CREDENTIALS_CHANGED_EVENT, WATCH_UNREAD_EVENT } from '@/components/layout/AppHeader';
 import { useUI } from '@/components/ui/UIProvider';
 import { watchApi } from '@/lib/api';
+import { useViewerAvailable, viewerSourceHref } from '@/lib/viewer';
 import { groupItems, type ItemGroup } from '@/lib/group-items';
 import {
   clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout, type SourceSort,
@@ -164,6 +166,7 @@ function ResizeHandle({ vertical, value, min, max, label, onChange, onReset, cla
 
 export default function UpdatesPage() {
   const ui = useUI();
+  const viewerAvailable = useViewerAvailable();
   const [sources, setSources] = useState<WatchSource[] | null>(null);
   const [credentials, setCredentials] = useState<SiteCredential[]>([]);
   const [items, setItems] = useState<WatchItem[]>([]);
@@ -972,6 +975,17 @@ export default function UpdatesPage() {
                     >
                       <ExternalLink size={13} aria-hidden="true" />
                     </a>
+                    {viewerAvailable && (
+                      // <a> e non <Link>: /viewer non fa parte dell'app Next
+                      <a
+                        href={viewerSourceHref(s.id)}
+                        className="icon-btn icon-btn-sm shrink-0"
+                        aria-label={`Apri ${s.name} nel viewer remoto`}
+                        title="Apri nel viewer remoto"
+                      >
+                        <MonitorSmartphone size={13} aria-hidden="true" />
+                      </a>
+                    )}
                     <span className="row-actions">
                       <button type="button" className="icon-btn icon-btn-sm" onClick={() => setEditingSource(s)} aria-label={`Modifica ${s.name}`} title="Modifica">
                         <Pencil size={13} aria-hidden="true" />
@@ -1508,6 +1522,11 @@ export default function UpdatesPage() {
                 <a href={current.url} target="_blank" rel="noopener noreferrer" className="icon-btn" aria-label="Apri la pagina" title="Apri la pagina">
                   <ExternalLink size={16} aria-hidden="true" />
                 </a>
+                {viewerAvailable && (
+                  <a href={viewerSourceHref(current.id)} className="icon-btn" aria-label="Apri la pagina nel viewer remoto" title="Apri nel viewer remoto">
+                    <MonitorSmartphone size={16} aria-hidden="true" />
+                  </a>
+                )}
                 <button type="button" className="icon-btn" onClick={() => setEditingSource(current)} aria-label="Modifica fonte" title="Modifica">
                   <Pencil size={16} aria-hidden="true" />
                 </button>

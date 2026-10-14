@@ -7,6 +7,7 @@ import { Bookmark, Download, KeyRound, LogOut, MonitorSmartphone, Puzzle, Rss, S
 import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
+import { useViewerAvailable } from '@/lib/viewer';
 
 /** Evento con cui le pagine aggiornano il contatore "Aggiornamenti" senza ricaricarlo. */
 export const WATCH_UNREAD_EVENT = 'linko:watch-unread';
@@ -27,11 +28,8 @@ export default function AppHeader() {
   const [unread, setUnread] = useState(0);
   const [expired, setExpired] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Il viewer remoto esiste solo sulla versione HTTPS (/viewer servito da Caddy)
-  const [viewerAvailable, setViewerAvailable] = useState(false);
+  const viewerAvailable = useViewerAvailable();
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { setViewerAvailable(window.location.protocol === 'https:'); }, []);
 
   // Contatore non letti: all'avvio, ogni minuto e quando una pagina lo comunica
   useEffect(() => {
