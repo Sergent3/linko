@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUI } from '@/components/ui/UIProvider';
 import { bookmarks as bookmarksApi, watchApi } from '@/lib/api';
 import { useViewerAvailable } from '@/lib/viewer';
+import NotificationBell from './NotificationBell';
 
 /** Evento con cui le pagine aggiornano il contatore "Aggiornamenti" senza ricaricarlo. */
 export const WATCH_UNREAD_EVENT = 'linko:watch-unread';
@@ -111,6 +112,8 @@ export default function AppHeader() {
           <kbd className="text-[11px] text-fg-faint border border-line rounded px-1.5">Ctrl&nbsp;K</kbd>
         </button>
       )}
+
+      <NotificationBell />
 
       {viewerAvailable && (
         // <a> e non <Link>: /viewer non fa parte dell'app Next

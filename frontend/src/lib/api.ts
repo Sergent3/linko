@@ -272,6 +272,30 @@ export const notificationsApi = {
   removeTelegram: () => request<NotificationSettings>('/notifications/telegram', { method: 'DELETE' }),
 };
 
+// ── Avvisi in-app (campanella) e push ─────────────────────────────────────────
+
+export interface AppNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  url: string | null;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export const appNotificationsApi = {
+  list: () => request<{ items: AppNotification[]; unread: number }>('/app-notifications'),
+  markRead: (id: string) => request<{ ok: boolean }>(`/app-notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+  markAllRead: () => request<{ ok: boolean }>('/app-notifications/read-all', { method: 'POST' }),
+  pushKey: () => request<{ publicKey: string }>('/app-notifications/push/key'),
+  subscribe: (sub: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    request<{ ok: boolean }>('/app-notifications/push/subscribe', { method: 'POST', body: JSON.stringify(sub) }),
+  unsubscribe: (endpoint: string) =>
+    request<{ ok: boolean }>('/app-notifications/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  testPush: () => request<{ ok: boolean }>('/app-notifications/push/test', { method: 'POST' }),
+};
+
 // ── Estensione del browser ─────────────────────────────────────────────────────
 
 export const extensionApi = {

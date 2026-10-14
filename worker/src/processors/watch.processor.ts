@@ -31,6 +31,7 @@ import { notifyNew, runDigests } from '../watch/notify';
 import { botUsername, findPrivateChat, sendMessage, TelegramError } from '../watch/telegram';
 import { decrypt, loadKey } from '../lib/secret-box';
 import { config } from '../config';
+import { sendPush } from '../watch/push';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -48,6 +49,7 @@ export type WatchJobData =
   | { type: 'content'; userId: string; url: string }
   | { type: 'telegram'; action: 'verify'; token: string }
   | { type: 'telegram'; action: 'link' | 'test'; userId: string }
+  | { type: 'push'; userId: string; payload: Record<string, string> }
   | { type: 'cleanup' };
 
 export interface FoundFeed {
@@ -446,6 +448,8 @@ export function createWatchProcessor(queue: Queue) {
         return content(job.data.url, job.data.userId);
       case 'telegram':
         return telegramJob(job.data);
+      case 'push':
+        return sendPush(job.data.userId, job.data.payload);
       case 'cleanup':
         return cleanup();
     }

@@ -46,6 +46,8 @@ model User {
   siteCredentials SiteCredential[]
   notificationSettings NotificationSettings?
   extensionTokens ExtensionToken[]
+  appNotifications AppNotification[]
+  pushSubscriptions PushSubscription[]
 }
 
 model RefreshToken {
@@ -329,3 +331,42 @@ model NotificationSettings {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+
+/// Avvisi mostrati nella campanella di Linko (e inviati come push ai dispositivi iscritti)
+model AppNotification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String // es. download_done, download_space
+  title     String
+  body      String    @default("")
+  url       String? // pagina da aprire toccando l'avviso
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// Iscrizione Web Push di un dispositivo (solo da Linko in HTTPS)
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Impostazioni dell'istanza (chiavi VAPID, hash del segreto del viewer…)
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
