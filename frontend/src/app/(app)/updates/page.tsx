@@ -749,6 +749,29 @@ export default function UpdatesPage() {
     }
   }
 
+  // Sincronizza ora: tutte le fonti attive. La lista si riaggiorna man mano che i controlli finiscono.
+  const [syncing, setSyncing] = useState(false);
+  async function syncAll() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const r = await watchApi.syncAll();
+      const n = r.server + r.browser;
+      ui.toast(
+        n === 0
+          ? 'Nessuna fonte attiva da controllare'
+          : `Controllo di ${n} ${n === 1 ? 'fonte' : 'fonti'} avviato${r.browser ? ` (${r.browser} dal browser, entro un minuto)` : ''}`,
+      );
+      for (const ms of [10_000, 30_000, 75_000]) {
+        setTimeout(() => { loadItems(1); loadSources(); }, ms);
+      }
+      setTimeout(() => setSyncing(false), 30_000);
+    } catch {
+      ui.toast('Sincronizzazione non riuscita. Riprova.', { kind: 'error' });
+      setSyncing(false);
+    }
+  }
+
   async function remove(s: WatchSource) {
     const ok = await ui.confirm({
       title: 'Eliminare la fonte?',
@@ -1242,6 +1265,17 @@ export default function UpdatesPage() {
           <button type="button" role="tab" className="tab" aria-selected={onlyUnread} onClick={() => setOnlyUnread(true)}>Non letti</button>
         </div>
         <div className="flex-1" />
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={syncAll}
+          disabled={syncing}
+          aria-label="Sincronizza ora tutte le fonti"
+          title="Controlla subito tutte le fonti attive"
+        >
+          <RefreshCw size={15} aria-hidden="true" className={syncing ? 'animate-spin' : undefined} />
+          <span className="hidden sm:inline">{syncing ? 'Sincronizzo…' : 'Sincronizza ora'}</span>
+        </button>
         <button
           type="button"
           className="icon-btn"

@@ -63,6 +63,12 @@ watchRouter.delete('/sources/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+watchRouter.post('/sync', async (req, res, next) => {
+  try {
+    res.json(await service.syncAll(req.user.id));
+  } catch (err) { next(err); }
+});
+
 watchRouter.post('/sources/:id/check', async (req, res, next) => {
   try {
     res.json(await service.checkNow(req.params.id, req.user.id));

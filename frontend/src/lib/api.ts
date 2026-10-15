@@ -335,6 +335,9 @@ export const watchApi = {
 
   checkNow: (id: string) => request<WatchSource>(`/watch/sources/${id}/check`, { method: 'POST' }),
 
+  /** Controlla subito tutte le fonti attive. */
+  syncAll: () => request<{ server: number; browser: number }>('/watch/sync', { method: 'POST' }),
+
   items: (filters: { page?: number; limit?: number; sourceId?: string; domain?: string; category?: string; unread?: boolean } = {}) => {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([k, v]) => {

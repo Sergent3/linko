@@ -7,6 +7,7 @@ import { config } from '../../config';
 import { encrypt, loadKey } from '../../utils/secret-box';
 import { cleanUserAgent, CookieInputError, domainOf, parseCookieInput } from './cookies';
 import { sanitizeContent } from './content';
+import { forgetFailures } from '../extension/extension.service';
 import type { CreateSourceDto, ListItemsDto, PreviewDto, ReadAllDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
 
 const PREVIEW_TIMEOUT_MS = 30_000;
@@ -158,6 +159,40 @@ export async function deleteSource(id: string, userId: string) {
 export async function checkNow(id: string, userId: string) {
   await assertSource(id, userId);
   return prisma.watchSource.update({ where: { id }, data: { nextCheckAt: new Date() } });
+}
+
+/**
+ * Sincronizza ora tutte le fonti attive: quelle del server vanno subito in coda al worker
+ * (stesso jobId del tick, che così non le ripete), quelle dell'estensione tornano
+ * disponibili ai browser collegati, che le prendono alla prossima richiesta (entro un minuto).
+ */
+export async function syncAll(userId: string) {
+  const now = new Date();
+  const sources = await prisma.watchSource.findMany({
+    where: { userId, isActive: true },
+    select: { id: true, fetcher: true, currentIntervalMinutes: true },
+  });
+  const server = sources.filter((s) => s.fetcher === 'SERVER');
+  const browser = sources.filter((s) => s.fetcher === 'EXTENSION');
+  await prisma.$transaction([
+    ...server.map((s) =>
+      prisma.watchSource.update({ where: { id: s.id }, data: { nextCheckAt: new Date(now.getTime() + s.currentIntervalMinutes * 60_000) } }),
+    ),
+    ...(browser.length ? [prisma.watchSource.updateMany({ where: { id: { in: browser.map((s) => s.id) } }, data: { nextCheckAt: now } })] : []),
+  ]);
+  const slot = Math.floor(now.getTime() / 60_000);
+  if (server.length) {
+    await watchQueue.addBulk(
+      server.map((s) => ({
+        name: 'check',
+        data: { type: 'check' as const, sourceId: s.id },
+        opts: { jobId: `check-${s.id}-${slot}`, removeOnComplete: true, removeOnFail: 100 },
+      })),
+    );
+  }
+  // Ogni browser collegato riprova anche le fonti dove aveva trovato la verifica anti-bot
+  forgetFailures(browser.map((s) => s.id));
+  return { server: server.length, browser: browser.length };
 }
 
 export async function listChecks(id: string, userId: string) {

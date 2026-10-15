@@ -63,6 +63,11 @@ function originOf(url: string): string | null {
   }
 }
 
+/** Dimentica i fallimenti delle fonti (sincronizzazione manuale): tutti i browser riprovano. */
+export function forgetFailures(sourceIds: string[]) {
+  for (const id of sourceIds) failedOn.delete(id);
+}
+
 // ── Collegamento ─────────────────────────────────────────────────────────────
 
 export async function createToken(userId: string) {
