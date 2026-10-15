@@ -195,6 +195,11 @@ export default function UpdatesPage() {
   const [sourceQuery, setSourceQuery] = useState('');
   // Riga selezionata con la tastiera (id elemento, o giorno|chiave per un gruppo)
   const [cursorId, setCursorId] = useState<string | null>(null);
+  // Riga da ritrovare al ritorno dal viewer (?at=…): si cerca dopo il caricamento della lista
+  const returnRowRef = useRef<string | null>(null);
+  // Scelta una fonte (o sito, categoria): la selezione va sul primo elemento appena la lista arriva
+  const focusFirstRef = useRef(false);
+  const [focusFirst, setFocusFirst] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -231,6 +236,7 @@ export default function UpdatesPage() {
     setActiveSite(params.get('source') ? null : params.get('site'));
     setActiveCategory(params.get('source') || params.get('site') ? null : params.get('category'));
     setOnlyUnread(params.get('view') === 'unread');
+    returnRowRef.current = params.get('at');
     const addUrl = params.get('add_url');
     if (addUrl) {
       setWizardUrl(addUrl);
@@ -241,16 +247,21 @@ export default function UpdatesPage() {
     setReady(true);
   }, []);
 
-  useEffect(() => {
-    if (!ready) return;
+  /** Indirizzo di questa pagina con i filtri attuali; at = riga da ritrovare al ritorno. */
+  const pageHref = useCallback((at?: string) => {
     const params = new URLSearchParams();
     if (activeSource) params.set('source', activeSource);
     else if (activeSite) params.set('site', activeSite);
     else if (activeCategory) params.set('category', activeCategory);
     if (onlyUnread) params.set('view', 'unread');
+    if (at) params.set('at', at);
     const qs = params.toString();
-    window.history.replaceState({}, '', qs ? `/updates?${qs}` : '/updates');
-  }, [ready, activeSource, activeSite, activeCategory, onlyUnread]);
+    return qs ? `/updates?${qs}` : '/updates';
+  }, [activeSource, activeSite, activeCategory, onlyUnread]);
+
+  useEffect(() => {
+    if (ready) window.history.replaceState({}, '', pageHref());
+  }, [ready, pageHref]);
 
   const loadSources = useCallback(async () => {
     try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
@@ -267,6 +278,7 @@ export default function UpdatesPage() {
         unread: onlyUnread ? true : undefined,
       });
       setItems((prev) => (p === 1 ? res.data : [...prev, ...res.data]));
+      if (p === 1 && focusFirstRef.current) { focusFirstRef.current = false; setFocusFirst(true); }
       setTotal(res.meta.total);
       setPage(p);
     } catch {
@@ -537,6 +549,7 @@ export default function UpdatesPage() {
   }
 
   function selectCategory(category: string) {
+    focusFirstRef.current = true;
     setActiveCategory(category);
     setActiveSource(null);
     setActiveSite(null);
@@ -692,12 +705,16 @@ export default function UpdatesPage() {
   }
 
   function selectSource(id: string | null) {
+    // Stessa fonte: la lista non si ricarica, la selezione va subito sul primo elemento
+    if (id === activeSource && !activeSite && !activeCategory) { setFocusFirst(true); return; }
+    focusFirstRef.current = true;
     setActiveSource(id);
     setActiveSite(null);
     setActiveCategory(null);
   }
 
   function selectSite(site: string) {
+    focusFirstRef.current = true;
     setActiveSite(site);
     setActiveSource(null);
     setActiveCategory(null);
@@ -886,6 +903,33 @@ export default function UpdatesPage() {
     document.querySelector(`[data-row="${CSS.escape(cursorId)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [cursorId]);
 
+  // Ritorno dal viewer: la riga aperta torna al centro e selezionata. Se è più in basso
+  // della prima pagina caricata, si caricano le successive (al massimo fino a 5).
+  useEffect(() => {
+    const at = returnRowRef.current;
+    if (!at || loading) return;
+    const row = document.querySelector(`[data-row="${CSS.escape(at)}"]`);
+    if (row) {
+      returnRowRef.current = null;
+      row.scrollIntoView({ block: 'center' });
+      setCursorId(at);
+    } else if (items.length < total && page < 5) {
+      loadItems(page + 1);
+    } else {
+      returnRowRef.current = null;
+    }
+  }, [items, loading, total, page, loadItems]);
+
+  // Nuova fonte scelta: selezionato il primo elemento (il più recente, di solito in "Oggi"), lista in cima
+  useEffect(() => {
+    if (!focusFirst) return;
+    setFocusFirst(false);
+    const first = navRows[0];
+    if (!first) return;
+    setCursorId(first.id);
+    document.querySelector(`[data-row="${CSS.escape(first.id)}"]`)?.scrollIntoView({ block: 'center' });
+  }, [focusFirst, navRows]);
+
   /* ── Colonna Fonti: un sito con le sue fonti ─────────────────────────────── */
   function renderSiteGroup(g: SiteGroup, category: string | null, indent: number) {
     const multi = g.sources.length > 1;
@@ -992,7 +1036,7 @@ export default function UpdatesPage() {
                     {viewerAvailable && (
                       // <a> e non <Link>: /viewer non fa parte dell'app Next
                       <a
-                        href={viewerSourceHref(s.id)}
+                        href={viewerSourceHref(s.id, pageHref())}
                         className="icon-btn icon-btn-sm shrink-0"
                         aria-label={`Apri ${s.name} nel viewer remoto`}
                         title="Apri nel viewer remoto"
@@ -1067,7 +1111,7 @@ export default function UpdatesPage() {
             <Eye size={15} aria-hidden="true" />
           </button>
           {viewerAvailable && (
-            <a href={viewerItemHref(it.id)} className="icon-btn" onClick={(e) => openInViewer(e, it)} aria-label="Apri nel viewer remoto" title="Apri nel viewer remoto">
+            <a href={viewerItemHref(it.id, pageHref(it.id))} className="icon-btn" onClick={(e) => openInViewer(e, it)} aria-label="Apri nel viewer remoto" title="Apri nel viewer remoto">
               <MonitorSmartphone size={15} aria-hidden="true" />
             </a>
           )}
@@ -1160,7 +1204,7 @@ export default function UpdatesPage() {
             </button>
             {viewerAvailable && (
               <a
-                href={viewerItemHref(target.id)}
+                href={viewerItemHref(target.id, pageHref(id))}
                 className="icon-btn"
                 onClick={(e) => openInViewer(e, target)}
                 aria-label="Apri nel viewer remoto"
@@ -1571,7 +1615,7 @@ export default function UpdatesPage() {
                   <ExternalLink size={16} aria-hidden="true" />
                 </a>
                 {viewerAvailable && (
-                  <a href={viewerSourceHref(current.id)} className="icon-btn" aria-label="Apri la pagina nel viewer remoto" title="Apri nel viewer remoto">
+                  <a href={viewerSourceHref(current.id, pageHref())} className="icon-btn" aria-label="Apri la pagina nel viewer remoto" title="Apri nel viewer remoto">
                     <MonitorSmartphone size={16} aria-hidden="true" />
                   </a>
                 )}
