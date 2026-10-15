@@ -29,7 +29,7 @@ extensionRouter.delete('/tokens/:id', async (req, res, next) => {
 
 // ── Per l'estensione (token dell'estensione, non il JWT) ─────────────────────
 
-async function requireExtension(req: Request, _res: Response, next: NextFunction) {
+async function requireExtension(req: Request, res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : '';
@@ -41,6 +41,7 @@ async function requireExtension(req: Request, _res: Response, next: NextFunction
       : null;
     if (!auth) return next(new AppError(401, 'Estensione non collegata: ricollegala da Linko'));
     req.user = { id: auth.userId };
+    res.locals.extensionTokenId = auth.tokenId;
     next();
   } catch (err) { next(err); }
 }
@@ -50,12 +51,12 @@ agentRouter.use(requireExtension);
 
 agentRouter.get('/jobs', async (req, res, next) => {
   try {
-    res.json(await service.jobs(req.user.id));
+    res.json(await service.jobs(req.user.id, res.locals.extensionTokenId));
   } catch (err) { next(err); }
 });
 
 agentRouter.post('/results', async (req, res, next) => {
   try {
-    res.json(await service.result(req.user.id, agentResultSchema.parse(req.body)));
+    res.json(await service.result(req.user.id, res.locals.extensionTokenId, agentResultSchema.parse(req.body)));
   } catch (err) { next(err); }
 });

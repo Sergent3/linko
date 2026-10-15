@@ -18,6 +18,23 @@ const TOKEN_PREFIX = 'lkx_';
 const JOBS_PER_POLL = 5;
 // Ogni quanto l'estensione torna a chiedere (secondi)
 export const POLL_SECONDS = 60;
+// Un collegamento che ha chiesto le fonti negli ultimi minuti è "attivo"
+const ALIVE_MS = 5 * 60_000;
+// Fonti candidate lette a ogni richiesta, prima di escludere quelle fallite in questo browser
+const CANDIDATES = 50;
+
+/**
+ * Più browser collegati (estensione nel PC, agente del viewer sul VPS): se uno trova
+ * la verifica anti-bot o un errore, la fonte passa subito agli altri, e per un intervallo
+ * non gli viene ridata. Fonte -> collegamento -> fino a quando è escluso.
+ * In memoria: dopo un riavvio del backend si riprova al massimo una volta in più.
+ */
+const failedOn = new Map<string, Map<string, number>>();
+
+function isExcluded(sourceId: string, tokenId: string, now: number): boolean {
+  const until = failedOn.get(sourceId)?.get(tokenId);
+  return until !== undefined && until > now;
+}
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -97,14 +114,15 @@ export async function authenticate(token: string, info: { version?: string; brow
  * Fonti da controllare adesso. Vengono prenotate spostando nextCheckAt avanti di
  * un intervallo: se il browser si chiude a metà, tornano disponibili da sole.
  */
-export async function jobs(userId: string) {
+export async function jobs(userId: string, tokenId: string) {
   const now = new Date();
-  const due = await prisma.watchSource.findMany({
+  const candidates = await prisma.watchSource.findMany({
     where: { userId, fetcher: 'EXTENSION', isActive: true, nextCheckAt: { lte: now } },
     select: { id: true, name: true, mode: true, url: true, feedUrl: true, currentIntervalMinutes: true },
     orderBy: { nextCheckAt: 'asc' },
-    take: JOBS_PER_POLL,
+    take: CANDIDATES,
   });
+  const due = candidates.filter((s) => !isExcluded(s.id, tokenId, now.getTime())).slice(0, JOBS_PER_POLL);
   if (due.length > 0) {
     await prisma.$transaction(
       due.map((s) =>
@@ -134,11 +152,12 @@ const ERROR_MESSAGES: Record<NonNullable<AgentResultDto['error']>, string> = {
   network: 'L\'estensione non è riuscita ad aprire la pagina',
 };
 
-export async function result(userId: string, dto: AgentResultDto) {
+export async function result(userId: string, tokenId: string, dto: AgentResultDto) {
   const source = await prisma.watchSource.findFirst({ where: { id: dto.sourceId, userId, fetcher: 'EXTENSION' } });
   if (!source) throw new AppError(404, 'Fonte non trovata');
 
   if (dto.page) {
+    failedOn.delete(source.id);
     // Il worker la elabora come un controllo normale, senza contattare il sito
     await watchQueue.add(
       'check',
@@ -148,7 +167,21 @@ export async function result(userId: string, dto: AgentResultDto) {
     return { queued: true };
   }
 
-  // Errore lato browser: non conta per la sospensione automatica, serve l'utente
+  // Fallita in questo browser: se un altro collegamento attivo può ancora provarci, passa a lui subito
+  const now = Date.now();
+  const failed = failedOn.get(source.id) ?? new Map<string, number>();
+  failed.set(tokenId, now + source.currentIntervalMinutes * 60_000);
+  failedOn.set(source.id, failed);
+  const others = await prisma.extensionToken.findMany({
+    where: { userId, id: { not: tokenId }, lastSeenAt: { gte: new Date(now - ALIVE_MS) } },
+    select: { id: true },
+  });
+  if (others.some((t) => !isExcluded(source.id, t.id, now))) {
+    await prisma.watchSource.update({ where: { id: source.id }, data: { nextCheckAt: new Date(now) } });
+    return { queued: false, retryElsewhere: true };
+  }
+
+  // Errore in tutti i browser: non conta per la sospensione automatica, serve l'utente
   const base = ERROR_MESSAGES[dto.error!];
   const message = dto.error === 'network' && dto.message ? `${base}: ${dto.message}` : base;
   await prisma.$transaction([
