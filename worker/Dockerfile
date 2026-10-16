@@ -6,6 +6,13 @@ WORKDIR /app
 FROM base AS development
 CMD ["node_modules/.bin/tsx", "watch", "src/index.ts"]
 
+# ── Prebuilt: codice compilato da scripts/build-prod.sh ───────────────────────
+# Il codice (dist/ e node_modules con i binary Prisma musl) è montato dall'host:
+# tsc gira fuori da docker build perché AppArmor vieta di avviare processi lì dentro.
+FROM base AS prebuilt
+ENV NODE_ENV=production
+CMD ["node", "--enable-source-maps", "dist/index.js"]
+
 # ── Builder ───────────────────────────────────────────────────────────────────
 FROM base AS builder
 COPY package*.json ./

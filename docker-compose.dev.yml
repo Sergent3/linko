@@ -1,7 +1,18 @@
-# Frontend in modalità sviluppo (next dev, codice montato dall'host, ricaricamento automatico):
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
-# Più lento da aprire (JavaScript non ottimizzato, ~10 MB per pagina).
+# Modalità sviluppo con ricaricamento automatico (codice montato dall'host):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend backend worker
+# Più lenta: il frontend scarica ~10 MB di JavaScript per pagina, il backend registra ogni query.
 services:
+  backend:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+  worker:
+    build:
+      target: development
+    environment:
+      NODE_ENV: development
+
   frontend:
     build:
       target: development
