@@ -8,7 +8,7 @@ import { encrypt, loadKey } from '../../utils/secret-box';
 import { cleanUserAgent, CookieInputError, domainOf, parseCookieInput } from './cookies';
 import { sanitizeContent } from './content';
 import { forgetFailures } from '../extension/extension.service';
-import type { CreateSourceDto, ListItemsDto, PreviewDto, ReadAllDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
+import type { CreateDomainMoveDto, CreateSourceDto, ListItemsDto, PreviewDto, ReadAllDto, SaveCredentialDto, UpdateItemDto, UpdateSourceDto } from './watch.schema';
 
 const PREVIEW_TIMEOUT_MS = 30_000;
 
@@ -406,4 +406,111 @@ export async function deleteCredential(id: string, userId: string) {
   const cred = await prisma.siteCredential.findFirst({ where: { id, userId } });
   if (!cred) throw new AppError(404, 'Accesso non trovato');
   await prisma.siteCredential.delete({ where: { id } });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cambi di dominio (il worker li rileva da redirect o domini spariti)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DOMAIN_MOVE_TIMEOUT_MS = 180_000;
+
+function hostOrNull(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+function hostInput(input: string): string {
+  try {
+    return domainOf(input);
+  } catch {
+    throw new AppError(400, `Indirizzo non valido: ${input}`);
+  }
+}
+
+/** Fonti e segnalibri dell'utente sul dominio indicato. */
+async function onHost(userId: string, host: string) {
+  const like = `%${host}%`;
+  const [sources, bookmarks] = await Promise.all([
+    prisma.watchSource.findMany({
+      where: { userId, OR: [{ url: { contains: host } }, { feedUrl: { contains: host } }] },
+      select: { id: true, name: true, url: true, feedUrl: true },
+    }),
+    prisma.$queryRaw<Array<{ id: string; url: string }>>`
+      SELECT id, url FROM "Bookmark" WHERE "userId" = ${userId} AND "deletedAt" IS NULL AND url LIKE ${like}`,
+  ]);
+  return {
+    sources: sources.filter((s) => hostOrNull(s.url) === host || hostOrNull(s.feedUrl) === host),
+    bookmarks: bookmarks.filter((b) => hostOrNull(b.url) === host),
+  };
+}
+
+/** Proposte in attesa, con quante fonti e segnalibri toccano. */
+export async function listDomainMoves(userId: string) {
+  const moves = await prisma.domainMove.findMany({ where: { userId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+  return Promise.all(moves.map(async (m) => {
+    const { sources, bookmarks } = await onHost(userId, m.oldHost);
+    return { ...m, sources: sources.map((s) => ({ id: s.id, name: s.name })), bookmarkCount: bookmarks.length };
+  }));
+}
+
+/** Cambio di dominio indicato dall'utente (es. "eurekaddl.living" → "eurekaddl.beer"). */
+export async function createDomainMove(dto: CreateDomainMoveDto, userId: string) {
+  const oldHost = hostInput(dto.from);
+  const newHost = hostInput(dto.to);
+  if (oldHost === newHost) throw new AppError(400, 'Il nuovo dominio è uguale a quello vecchio');
+  const { sources, bookmarks } = await onHost(userId, oldHost);
+  if (sources.length === 0 && bookmarks.length === 0) throw new AppError(404, `Nessuna fonte o segnalibro su ${oldHost}`);
+  return prisma.domainMove.upsert({
+    where: { userId_oldHost_newHost: { userId, oldHost, newHost } },
+    create: { userId, oldHost, newHost, reason: 'MANUAL' },
+    update: { status: 'PENDING', resolvedAt: null },
+  });
+}
+
+/**
+ * Applica il cambio: fonti ed elementi li sposta il worker (deve riscaricare le
+ * fonti per riallineare le chiavi), i segnalibri il backend (hash dell'URL).
+ */
+export async function applyDomainMove(id: string, userId: string) {
+  const move = await prisma.domainMove.findFirst({ where: { id, userId } });
+  if (!move) throw new AppError(404, 'Proposta non trovata');
+  if (move.status === 'APPLIED') throw new AppError(409, 'Cambio già applicato');
+
+  const job = await watchQueue.add(
+    'domainMove',
+    { type: 'domainMove', userId, moveId: id },
+    { removeOnComplete: { age: 300 }, removeOnFail: { age: 300 }, attempts: 1 },
+  );
+  let result: { sources: number; items: number; realigned: number };
+  try {
+    result = await job.waitUntilFinished(watchQueueEvents, DOMAIN_MOVE_TIMEOUT_MS);
+  } catch (err) {
+    throw new AppError(422, (err as Error).message);
+  }
+
+  // Segnalibri: nuovo URL e nuovo hash; se il nuovo indirizzo è già salvato si lascia com'è
+  const { bookmarks } = await onHost(userId, move.oldHost);
+  let movedBookmarks = 0;
+  for (const b of bookmarks) {
+    const u = new URL(b.url);
+    u.hostname = move.newHost;
+    const { normalized, hash } = normalizeAndHash(u.toString());
+    const clash = await prisma.bookmark.findFirst({ where: { userId, urlHash: hash, id: { not: b.id } }, select: { id: true } });
+    if (clash) continue;
+    await prisma.bookmark.update({ where: { id: b.id }, data: { url: normalized, urlHash: hash } });
+    movedBookmarks++;
+  }
+  return { ...result, bookmarks: movedBookmarks, oldHost: move.oldHost, newHost: move.newHost };
+}
+
+export async function dismissDomainMove(id: string, userId: string) {
+  const { count } = await prisma.domainMove.updateMany({
+    where: { id, userId, status: 'PENDING' },
+    data: { status: 'DISMISSED', resolvedAt: new Date() },
+  });
+  if (!count) throw new AppError(404, 'Proposta non trovata');
 }

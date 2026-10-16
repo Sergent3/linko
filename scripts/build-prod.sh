@@ -15,4 +15,5 @@ for svc in $SERVICES; do
     -v "$PWD/$svc":/app -w /app node:20-alpine \
     sh -c 'rm -rf dist && npx tsc -p . && node -e "require(\"fs\").accessSync(\"dist/index.js\")"'
 done
-docker compose up -d --build --no-deps $SERVICES
+# Il codice è montato dall'host: senza --force-recreate il container (immagine invariata) non riparte
+docker compose up -d --build --no-deps --force-recreate $SERVICES

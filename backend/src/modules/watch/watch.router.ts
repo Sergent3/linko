@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as service from './watch.service';
 import {
+  createDomainMoveSchema,
   createSourceSchema,
   listItemsSchema,
   previewSchema,
@@ -145,6 +146,33 @@ watchRouter.post('/credentials/:id/verify', async (req, res, next) => {
 watchRouter.delete('/credentials/:id', async (req, res, next) => {
   try {
     await service.deleteCredential(req.params.id, req.user.id);
+    res.status(204).send();
+  } catch (err) { next(err); }
+});
+
+// ── Cambi di dominio ──────────────────────────────────────────────────────────
+
+watchRouter.get('/domain-moves', async (req, res, next) => {
+  try {
+    res.json(await service.listDomainMoves(req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.post('/domain-moves', async (req, res, next) => {
+  try {
+    res.status(201).json(await service.createDomainMove(createDomainMoveSchema.parse(req.body), req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.post('/domain-moves/:id/apply', async (req, res, next) => {
+  try {
+    res.json(await service.applyDomainMove(req.params.id, req.user.id));
+  } catch (err) { next(err); }
+});
+
+watchRouter.post('/domain-moves/:id/dismiss', async (req, res, next) => {
+  try {
+    await service.dismissDomainMove(req.params.id, req.user.id);
     res.status(204).send();
   } catch (err) { next(err); }
 });

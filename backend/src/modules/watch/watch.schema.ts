@@ -125,6 +125,12 @@ export const renameCategorySchema = z.object({
   to: category,
 });
 
+// Cambio di dominio indicato dall'utente: vecchio e nuovo indirizzo (o solo il dominio)
+export const createDomainMoveSchema = z.object({
+  from: z.string().trim().min(3).max(500),
+  to: z.string().trim().min(3).max(500),
+});
+
 export type PreviewDto = z.infer<typeof previewSchema>;
 export type CreateSourceDto = z.infer<typeof createSourceSchema>;
 export type UpdateSourceDto = z.infer<typeof updateSourceSchema>;
@@ -132,3 +138,4 @@ export type ListItemsDto = z.infer<typeof listItemsSchema>;
 export type ReadAllDto = z.infer<typeof readAllSchema>;
 export type UpdateItemDto = z.infer<typeof updateItemSchema>;
 export type SaveCredentialDto = z.infer<typeof saveCredentialSchema>;
+export type CreateDomainMoveDto = z.infer<typeof createDomainMoveSchema>;

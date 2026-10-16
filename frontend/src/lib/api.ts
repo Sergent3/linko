@@ -16,6 +16,8 @@ import type {
   WatchSource,
   UpdateWatchSourceDto,
   SiteCredential,
+  DomainMove,
+  DomainMoveResult,
   CredentialVerification,
   SaveCredentialDto,
   ExtensionStatus,
@@ -360,6 +362,13 @@ export const watchApi = {
 
   // Accessi ai siti con login (cookie di sessione)
   credentials: () => request<SiteCredential[]>('/watch/credentials'),
+  /** Siti che sembrano aver cambiato dominio (proposte in attesa). */
+  domainMoves: () => request<DomainMove[]>('/watch/domain-moves'),
+  /** Cambio di dominio indicato dall'utente: vecchio e nuovo indirizzo (o dominio). */
+  createDomainMove: (from: string, to: string) =>
+    request<DomainMove>('/watch/domain-moves', { method: 'POST', body: JSON.stringify({ from, to }) }),
+  applyDomainMove: (id: string) => request<DomainMoveResult>(`/watch/domain-moves/${id}/apply`, { method: 'POST' }),
+  dismissDomainMove: (id: string) => request<void>(`/watch/domain-moves/${id}/dismiss`, { method: 'POST' }),
   saveCredential: (dto: SaveCredentialDto) =>
     request<{ credential: SiteCredential; verification: CredentialVerification }>('/watch/credentials', {
       method: 'PUT',

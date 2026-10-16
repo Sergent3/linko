@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Plus, ExternalLink, BookmarkPlus, EyeOff, Check, CheckCheck, RefreshCw, Pause, Play, Trash2, AlertTriangle, Circle, Rss, LayoutList, KeyRound, MessagesSquare, Pencil,
   ChevronRight, ChevronDown, SlidersHorizontal, PanelLeftClose, PanelLeftOpen, Search, Keyboard, X,
-  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper, Puzzle,
+  ArrowUpDown, Folder, FolderPlus, Eye, GripVertical, Bell, Newspaper, Puzzle, ArrowRightLeft,
   MonitorSmartphone,
 } from 'lucide-react';
 import AddSourceWizard from '@/components/updates/AddSourceWizard';
@@ -20,7 +20,7 @@ import { groupItems, type ItemGroup } from '@/lib/group-items';
 import {
   clampHeight, clampWidth, LIST_MAX_HEIGHT, LIST_MIN_HEIGHT, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, useUpdatesLayout, type SourceSort,
 } from '@/lib/updates-layout';
-import type { SiteCredential, WatchItem, WatchSource } from '@/types/api';
+import type { DomainMove, SiteCredential, WatchItem, WatchSource } from '@/types/api';
 
 const PAGE_SIZE = 50;
 
@@ -171,6 +171,9 @@ export default function UpdatesPage() {
   const viewerAvailable = useViewerAvailable();
   const [sources, setSources] = useState<WatchSource[] | null>(null);
   const [credentials, setCredentials] = useState<SiteCredential[]>([]);
+  // Siti che sembrano aver cambiato dominio, e quello in corso di aggiornamento
+  const [domainMoves, setDomainMoves] = useState<DomainMove[]>([]);
+  const [movingId, setMovingId] = useState<string | null>(null);
   const [items, setItems] = useState<WatchItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -266,6 +269,7 @@ export default function UpdatesPage() {
   const loadSources = useCallback(async () => {
     try { setSources(await watchApi.sources()); } catch { /* il contatore resta quello precedente */ }
     try { setCredentials(await watchApi.credentials()); } catch { /* avviso accessi non disponibile */ }
+    try { setDomainMoves(await watchApi.domainMoves()); } catch { /* avviso cambi di dominio non disponibile */ }
   }, []);
 
   const loadItems = useCallback(async (p = 1) => {
@@ -737,6 +741,52 @@ export default function UpdatesPage() {
       ui.toast(`Controllo ogni ${every(minutes)}`);
     } catch {
       ui.toast('Modifica non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  /** Sposta fonti, elementi e segnalibri sul nuovo dominio (il worker riscarica le fonti: può volerci un po'). */
+  async function applyMove(m: { id: string; oldHost: string; newHost: string }) {
+    setMovingId(m.id);
+    try {
+      const r = await watchApi.applyDomainMove(m.id);
+      const parts = [
+        `${r.sources} ${r.sources === 1 ? 'fonte' : 'fonti'}`,
+        r.bookmarks ? `${r.bookmarks} ${r.bookmarks === 1 ? 'segnalibro' : 'segnalibri'}` : null,
+      ].filter(Boolean).join(' e ');
+      ui.toast(`Spostati su ${r.newHost}: ${parts}. I controlli ripartono entro un minuto.`);
+      loadSources();
+      loadItems(1);
+    } catch (err) {
+      ui.toast((err as Error).message || 'Aggiornamento non riuscito. Riprova.', { kind: 'error' });
+    } finally {
+      setMovingId(null);
+    }
+  }
+
+  async function dismissMove(m: DomainMove) {
+    try {
+      await watchApi.dismissDomainMove(m.id);
+      setDomainMoves((prev) => prev.filter((x) => x.id !== m.id));
+    } catch {
+      ui.toast('Richiesta non riuscita. Riprova.', { kind: 'error' });
+    }
+  }
+
+  /** Il sito ha cambiato indirizzo e Linko non se n'è accorto: lo indica l'utente. */
+  async function changeDomain(s: WatchSource) {
+    const from = siteOf(s.url);
+    const to = (await ui.prompt({
+      title: `${from} ha cambiato dominio?`,
+      label: 'Nuovo indirizzo del sito',
+      placeholder: 'es. https://eurekaddl.beer/',
+      confirmLabel: 'Aggiorna',
+    }))?.trim();
+    if (!to) return;
+    try {
+      const move = await watchApi.createDomainMove(s.url, to);
+      await applyMove(move);
+    } catch (err) {
+      ui.toast((err as Error).message || 'Indirizzo non valido.', { kind: 'error' });
     }
   }
 
@@ -1573,6 +1623,30 @@ export default function UpdatesPage() {
 
         {/* ── Timeline ───────────────────────────────────────────────────── */}
         <section className="timeline-pane flex-1 min-w-0 w-full" aria-label="Elementi">
+          {domainMoves.map((m) => (
+            <div key={m.id} className="card flex flex-wrap items-center gap-3 px-4 py-3 mb-4" role="status" style={{ borderColor: 'var(--warning)' }}>
+              <ArrowRightLeft size={16} className="shrink-0" style={{ color: 'var(--warning)' }} aria-hidden="true" />
+              <div className="flex-1 min-w-[220px] text-sm">
+                <p>
+                  <strong translate="no">{m.oldHost}</strong> sembra essersi spostato su{' '}
+                  <a href={`https://${m.newHost}/`} target="_blank" rel="noopener noreferrer" className="underline text-accent-text" translate="no">{m.newHost}</a>
+                  {m.reason === 'REDIRECT' ? ': il sito ora rimanda lì.' : m.reason === 'DNS' ? ': il vecchio dominio non esiste più e il nuovo ha lo stesso nome.' : '.'}
+                </p>
+                <p className="text-xs text-fg-muted mt-0.5">
+                  Da aggiornare: {m.sources.length} {m.sources.length === 1 ? 'fonte' : 'fonti'}
+                  {m.bookmarkCount > 0 && <> e {m.bookmarkCount} {m.bookmarkCount === 1 ? 'segnalibro' : 'segnalibri'}</>}
+                  {m.sources.length > 0 && <> ({m.sources.map((x) => x.name).join(' · ')})</>}.
+                  {m.reason === 'DNS' && ' Apri il nuovo sito per controllare che sia quello giusto.'}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn btn-sm btn-primary" onClick={() => applyMove(m)} disabled={movingId !== null}>
+                  {movingId === m.id ? 'Aggiorno…' : 'Aggiorna'}
+                </button>
+                <button type="button" className="btn btn-sm btn-ghost" onClick={() => dismissMove(m)} disabled={movingId !== null}>Ignora</button>
+              </div>
+            </div>
+          ))}
           {expiredCreds.map((c) => (
             <div key={c.id} className="alert-error flex flex-wrap items-center gap-3 mb-4" role="alert">
               <KeyRound size={16} className="shrink-0" aria-hidden="true" />
@@ -1655,6 +1729,9 @@ export default function UpdatesPage() {
                 )}
                 <button type="button" className="icon-btn" onClick={() => setEditingSource(current)} aria-label="Modifica fonte" title="Modifica">
                   <Pencil size={16} aria-hidden="true" />
+                </button>
+                <button type="button" className="icon-btn" onClick={() => changeDomain(current)} disabled={movingId !== null} aria-label="Il sito ha cambiato dominio" title="Il sito ha cambiato dominio?">
+                  <ArrowRightLeft size={16} aria-hidden="true" />
                 </button>
                 <button type="button" className="icon-btn" onClick={() => checkNow(current)} aria-label="Controlla ora" title="Controlla ora">
                   <RefreshCw size={16} aria-hidden="true" />

@@ -9,6 +9,7 @@
  *   preview  analizza una pagina per il wizard (aree suggerite / elementi di un selettore)
  *   verify   prova il cookie di un sito (Accessi ai siti) e dice se il login è valido
  *   cleanup  ogni giorno: elimina elementi letti vecchi e registro controlli
+ *   domainMove  applica il trasloco di un sito su un nuovo dominio (fonti ed elementi)
  *
  * Frequenza adattiva: se a un controllo tutti gli elementi trovati sono nuovi,
  * la lista scorre più velocemente dei controlli e si rischia di perdere elementi:
@@ -32,6 +33,7 @@ import { botUsername, findPrivateChat, sendMessage, TelegramError } from '../wat
 import { decrypt, loadKey } from '../lib/secret-box';
 import { config } from '../config';
 import { sendPush } from '../watch/push';
+import { bareHost, hostOf, isDomainMove, probeFor, recordMove, searchMovedDomain, shouldSearch } from '../watch/domain-move';
 
 export const WATCH_QUEUE = 'linko-watch';
 
@@ -50,6 +52,7 @@ export type WatchJobData =
   | { type: 'telegram'; action: 'verify'; token: string }
   | { type: 'telegram'; action: 'link' | 'test'; userId: string }
   | { type: 'push'; userId: string; payload: Record<string, string> }
+  | { type: 'domainMove'; userId: string; moveId: string }
   | { type: 'cleanup' };
 
 export interface FoundFeed {
@@ -86,6 +89,8 @@ export interface VerifyResult {
 /** Elemento candidato, comune a pagine (area) e feed. */
 interface Candidate {
   key: string;
+  /** Testo da cui nasce la chiave (guid o URL): serve a riallineare le chiavi dopo un cambio di dominio */
+  rawKey: string;
   url: string;
   title: string;
   publishedAt?: string;
@@ -176,7 +181,7 @@ async function collect(
     const feed = parseFeed(res.html, res.url);
     if (!feed) throw new Error('L\'indirizzo non restituisce più un feed RSS/Atom');
     // Chiave dal guid/id del feed: resta stabile anche se cambia l'URL dell'articolo
-    return feed.items.map((i) => ({ ...i, key: itemKey(i.key) }));
+    return feed.items.map((i) => ({ ...i, rawKey: i.key, key: itemKey(i.key) }));
   }
 
   if (source.mode === 'THREAD') {
@@ -187,7 +192,7 @@ async function collect(
     if (page.status >= 400) throw new Error(httpErrorMessage(page.status, 'La discussione'));
     const thread = parseThread(page.html, page.url);
     if (!thread) throw new Error('Nessun post leggibile nella discussione: potrebbe servire il login o il thread è stato spostato');
-    return thread.posts.map((i) => ({ ...i, key: itemKey(i.url), tags: [] }));
+    return thread.posts.map((i) => ({ ...i, rawKey: i.url, key: itemKey(i.url), tags: [] }));
   }
 
   if (!source.selector) throw new Error('Fonte senza area selezionata');
@@ -196,7 +201,7 @@ async function collect(
   if (page.status >= 400) throw new Error(httpErrorMessage(page.status));
   const found = extractItems(page.html, page.url, source.selector);
   if (found.length === 0) throw new Error('Nessun elemento trovato nell\'area: la pagina potrebbe essere cambiata');
-  return found.map((i) => ({ ...i, key: itemKey(stableKeyUrl(i.url)), tags: [] }));
+  return found.map((i) => ({ ...i, rawKey: stableKeyUrl(i.url), key: itemKey(stableKeyUrl(i.url)), tags: [] }));
 }
 
 async function check(sourceId: string, provided?: FetchedPage): Promise<void> {
@@ -214,8 +219,18 @@ async function check(sourceId: string, provided?: FetchedPage): Promise<void> {
     return;
   }
 
+  // Redirect seguiti durante il controllo: rivelano un sito che ha cambiato dominio
+  const hops: Array<{ from: string; to: string }> = [];
+  const fetcher: Fetcher = provided
+    ? providedPage(provided)
+    : async (u) => {
+      const page = await fetchPage(u, auths);
+      hops.push({ from: u, to: page.url });
+      return page;
+    };
+
   try {
-    const found = await collect(source, auths, provided ? providedPage(provided) : (u) => fetchPage(u, auths));
+    const found = await collect(source, auths, fetcher);
 
     const terms = parseFilter(source.filter);
     const matching = found
@@ -264,6 +279,11 @@ async function check(sourceId: string, provided?: FetchedPage): Promise<void> {
       }),
     ]);
     if (!baseline) await notifyNew(source, fresh.map(({ item }) => ({ title: item.title, url: item.url })));
+    const moved = hops.find((h) => isDomainMove(h.from, h.to));
+    if (moved) {
+      await recordMove(source.userId, hostOf(moved.from)!, hostOf(moved.to)!, 'REDIRECT', `${moved.from} → ${moved.to}`)
+        .catch((e) => console.warn(`[watch] trasloco: ${(e as Error).message}`));
+    }
   } catch (err) {
     const message = (err as Error).message.slice(0, 500);
     // La scadenza del cookie non è un guasto del sito: non conta per la sospensione automatica
@@ -286,7 +306,20 @@ async function check(sourceId: string, provided?: FetchedPage): Promise<void> {
       }),
       prisma.watchCheck.create({ data: { sourceId, durationMs: Date.now() - started, ok: false, error: message } }),
     ]);
+    // Dominio sparito: forse il sito si è spostato su un'altra estensione
+    const host = hostOf(source.feedUrl ?? source.url);
+    if (!provided && host && isDnsFailure(err) && shouldSearch(host)) {
+      await searchMovedDomain(host, probeFor(source))
+        .then((m) => m && recordMove(source.userId, host, m.newHost, 'DNS', m.evidence))
+        .catch((e) => console.warn(`[watch] ricerca nuovo dominio di ${host}: ${(e as Error).message}`));
+    }
   }
+}
+
+/** Il nome del dominio non esiste (NXDOMAIN). */
+function isDnsFailure(err: unknown): boolean {
+  const code = (err as { code?: string }).code;
+  return code === 'ENOTFOUND' || /\bENOTFOUND\b/.test((err as Error).message ?? '');
 }
 
 async function markAuthError(sourceId: string, message: string, started: number): Promise<void> {
@@ -423,6 +456,98 @@ async function telegramJob(data: Extract<WatchJobData, { type: 'telegram' }>): P
   }
 }
 
+// ── domainMove ────────────────────────────────────────────────────────────────
+
+/** Sostituisce il dominio in un URL se è quello vecchio (con o senza www). */
+export function swapHost(url: string, oldHost: string, newHost: string): string {
+  try {
+    const u = new URL(url);
+    if (bareHost(u.hostname) !== oldHost) return url;
+    u.hostname = newHost;
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+/** Sostituisce il dominio dentro un testo qualsiasi (guid dei feed, nomi delle fonti). */
+export function swapInText(text: string, from: string, to: string): string {
+  return text.split(`www.${from}`).join(to).split(from).join(to);
+}
+
+/**
+ * Sposta sul nuovo dominio le fonti dell'utente che usano quello vecchio:
+ * indirizzi, nomi, link degli elementi. Le chiavi degli elementi nascono da guid
+ * o URL che contengono il dominio: si scarica la fonte dal nuovo dominio e, per
+ * ogni elemento, si ricalcola la chiave che aveva col vecchio, così gli elementi
+ * già visti non tornano come nuovi. Le fonti sospese per errori si riattivano.
+ */
+async function applyDomainMove(userId: string, moveId: string) {
+  const move = await prisma.domainMove.findFirst({ where: { id: moveId, userId } });
+  if (!move) throw new Error('Proposta non trovata');
+  if (move.status === 'APPLIED') throw new Error('Già applicato');
+  const { oldHost, newHost } = move;
+
+  const sources = (await prisma.watchSource.findMany({ where: { userId } }))
+    .filter((s) => hostOf(s.url) === oldHost || (s.feedUrl && hostOf(s.feedUrl) === oldHost));
+  const auths = await loadAuths(userId);
+  let realigned = 0;
+  let items = 0;
+
+  for (const source of sources) {
+    const moved = {
+      url: swapHost(source.url, oldHost, newHost),
+      feedUrl: source.feedUrl ? swapHost(source.feedUrl, oldHost, newHost) : null,
+      name: swapInText(source.name, oldHost, newHost),
+    };
+
+    // Coppie chiave vecchia → nuova per gli elementi ancora presenti sulla fonte
+    let pairs: Array<{ from: string; to: string }> = [];
+    if (source.fetcher === 'SERVER') {
+      try {
+        const found = await collect({ ...source, ...moved }, auths, (u) => fetchPage(u, auths));
+        pairs = found
+          .map((c) => ({ from: itemKey(swapInText(c.rawKey, newHost, oldHost)), to: c.key }))
+          .filter((p) => p.from !== p.to);
+      } catch (err) {
+        console.warn(`[watch] trasloco ${source.name}: chiavi non riallineate (${(err as Error).message})`);
+      }
+    }
+    const taken = new Set(
+      (await prisma.watchItem.findMany({ where: { sourceId: source.id, key: { in: pairs.map((p) => p.to) } }, select: { key: true } }))
+        .map((i) => i.key),
+    );
+    pairs = pairs.filter((p) => !taken.has(p.to));
+
+    const results = await prisma.$transaction([
+      ...pairs.map((p) => prisma.watchItem.updateMany({ where: { sourceId: source.id, key: p.from }, data: { key: p.to } })),
+      prisma.$executeRaw`
+        UPDATE "WatchItem"
+           SET url = replace(replace(url, ${'//www.' + oldHost}, ${'//' + newHost}), ${'//' + oldHost}, ${'//' + newHost})
+         WHERE "sourceId" = ${source.id} AND url LIKE ${'%//%' + oldHost + '%'}`,
+      prisma.watchSource.update({
+        where: { id: source.id },
+        data: {
+          ...moved,
+          status: 'PENDING',
+          lastError: null,
+          failCount: 0,
+          nextCheckAt: new Date(),
+          // Riattiva solo le fonti sospese per errori, non quelle messe in pausa dall'utente
+          ...(!source.isActive && source.status === 'ERROR' && { isActive: true }),
+        },
+      }),
+    ]);
+    realigned += results.slice(0, pairs.length).reduce<number>((n, r) => n + (r as { count: number }).count, 0);
+    items += results[pairs.length] as number;
+  }
+
+  await prisma.domainMove.update({ where: { id: move.id }, data: { status: 'APPLIED', resolvedAt: new Date() } });
+  // Altre proposte aperte per lo stesso vecchio dominio non servono più
+  await prisma.domainMove.updateMany({ where: { userId, oldHost, status: 'PENDING' }, data: { status: 'DISMISSED', resolvedAt: new Date() } });
+  return { sources: sources.length, items, realigned };
+}
+
 async function cleanup(): Promise<void> {
   // Gli elementi trovati restano per sempre (si eliminano solo con la fonte): si pulisce solo il registro dei controlli
   const now = Date.now();
@@ -450,6 +575,8 @@ export function createWatchProcessor(queue: Queue) {
         return telegramJob(job.data);
       case 'push':
         return sendPush(job.data.userId, job.data.payload);
+      case 'domainMove':
+        return applyDomainMove(job.data.userId, job.data.moveId);
       case 'cleanup':
         return cleanup();
     }

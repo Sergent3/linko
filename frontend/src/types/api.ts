@@ -213,6 +213,28 @@ export interface WatchPreview {
 
 export type CredentialStatus = 'UNVERIFIED' | 'OK' | 'EXPIRED';
 
+/** Sito che sembra aver cambiato dominio: proposta da applicare o ignorare. */
+export interface DomainMove {
+  id: string;
+  oldHost: string;
+  newHost: string;
+  reason: 'REDIRECT' | 'DNS' | 'MANUAL';
+  status: 'PENDING' | 'APPLIED' | 'DISMISSED';
+  evidence: string | null;
+  createdAt: string;
+  sources: Array<{ id: string; name: string }>;
+  bookmarkCount: number;
+}
+
+export interface DomainMoveResult {
+  oldHost: string;
+  newHost: string;
+  sources: number;
+  items: number;
+  realigned: number;
+  bookmarks: number;
+}
+
 export interface SiteCredential {
   id: string;
   domain: string;

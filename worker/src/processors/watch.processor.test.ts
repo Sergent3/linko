@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/prisma', () => ({ prisma: {} }));
 vi.mock('../config', () => ({ config: { SCRAPING_TIMEOUT_MS: 1000, WATCH_BLOCKED_IPS: [] } }));
 
-import { nextInterval, providedPage } from './watch.processor';
+import { nextInterval, providedPage, swapHost, swapInText } from './watch.processor';
 
 describe('nextInterval', () => {
   it('primo controllo o nessun elemento: invariato', () => {
@@ -35,5 +35,17 @@ describe('providedPage', () => {
     const fetch = providedPage(page);
     await expect(fetch('https://esempio.it/')).resolves.toBe(page);
     await expect(fetch('https://esempio.it/feed')).rejects.toThrow(/estensione/);
+  });
+});
+
+describe('trasloco di dominio', () => {
+  it('swapHost cambia solo il dominio vecchio, con o senza www', () => {
+    expect(swapHost('https://www.eurekaddl.living/movies/feed/', 'eurekaddl.living', 'eurekaddl.beer')).toBe('https://eurekaddl.beer/movies/feed/');
+    expect(swapHost('https://altro.com/x', 'eurekaddl.living', 'eurekaddl.beer')).toBe('https://altro.com/x');
+  });
+  it('swapInText sostituisce il dominio nei guid e nei nomi, avanti e indietro', () => {
+    const guid = 'https://eurekaddl.beer/?p=3690164';
+    expect(swapInText(guid, 'eurekaddl.beer', 'eurekaddl.living')).toBe('https://eurekaddl.living/?p=3690164');
+    expect(swapInText('eurekaddl.living · Movies', 'eurekaddl.living', 'eurekaddl.beer')).toBe('eurekaddl.beer · Movies');
   });
 });
