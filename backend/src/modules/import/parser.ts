@@ -18,7 +18,8 @@
  */
 
 import * as cheerio from 'cheerio';
-import type { CheerioAPI, Element } from 'cheerio';
+import type { CheerioAPI } from 'cheerio';
+import type { Element } from 'domhandler';
 import sanitizeHtml from 'sanitize-html';
 import { createHash } from 'crypto';
 
@@ -63,10 +64,19 @@ const STRIP_ALL: sanitizeHtml.IOptions = {
   disallowedTagsMode: 'discard',
 };
 
-/** Rimuove qualsiasi tag HTML dal testo. */
+/**
+ * Rimuove qualsiasi tag HTML dal testo. sanitize-html riscrive & < > " come entità:
+ * qui si torna al testo semplice (l'interfaccia lo mostra già con escape), altrimenti
+ * i titoli restano "Tom &amp; Jerry".
+ */
 function sanitizeText(input: string | undefined | null): string {
   if (!input) return '';
-  return sanitizeHtml(input.trim(), STRIP_ALL);
+  return sanitizeHtml(input.trim(), STRIP_ALL)
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&#x27;/g, "'")
+    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -279,7 +289,7 @@ function walkDL(dlEl: Element, currentPath: string[], ctx: WalkContext): void {
  */
 export function parseBookmarksHtml(html: string): ParseResult {
   const ctx: WalkContext = {
-    $: cheerio.load(html, { xmlMode: false, decodeEntities: true }),
+    $: cheerio.load(html), // parser HTML: le entità (&amp; …) vengono sempre decodificate
     seenHashes: new Set(),
     allBookmarks: [],
     rootFolders: [],
